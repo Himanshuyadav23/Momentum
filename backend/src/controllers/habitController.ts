@@ -17,13 +17,13 @@ export const createHabit = async (req: Request, res: Response) => {
       isActive: true
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       data: { habit }
     });
   } catch (error) {
     console.error('Create habit error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Failed to create habit'
     });
@@ -37,13 +37,13 @@ export const getHabits = async (req: Request, res: Response) => {
 
     const habits = await Habit.findByUserId(userId, activeOnly !== 'false');
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: { habits }
     });
   } catch (error) {
     console.error('Get habits error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Failed to get habits'
     });
@@ -67,13 +67,13 @@ export const updateHabit = async (req: Request, res: Response) => {
 
     const updatedHabit = await Habit.update(habitId, updateData);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: { habit: updatedHabit }
     });
   } catch (error) {
     console.error('Update habit error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Failed to update habit'
     });
@@ -103,13 +103,13 @@ export const deleteHabit = async (req: Request, res: Response) => {
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: 'Habit deleted successfully'
     });
   } catch (error) {
     console.error('Delete habit error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Failed to delete habit'
     });
@@ -163,13 +163,13 @@ export const logHabit = async (req: Request, res: Response) => {
       longestStreak
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       data: { habitLog }
     });
   } catch (error) {
     console.error('Log habit error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Failed to log habit'
     });
@@ -198,13 +198,13 @@ export const getHabitLogs = async (req: Request, res: Response) => {
 
     const habitLogs = await HabitLog.findByHabitId(habitId, options);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: { habitLogs }
     });
   } catch (error) {
     console.error('Get habit logs error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Failed to get habit logs'
     });
@@ -228,13 +228,13 @@ export const deleteHabitLog = async (req: Request, res: Response) => {
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: 'Habit log deleted successfully'
     });
   } catch (error) {
     console.error('Delete habit log error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Failed to delete habit log'
     });

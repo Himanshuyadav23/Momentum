@@ -36,7 +36,7 @@ export const getDashboardData = async (req: Request, res: Response) => {
     const totalExpensesToday = todayExpenses.reduce((sum, expense) => sum + expense.amount, 0);
     const completedHabitsToday = todayHabitLogs.length;
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: {
         dashboard: {
@@ -50,7 +50,7 @@ export const getDashboardData = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Get dashboard data error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Failed to get dashboard data'
     });
@@ -129,7 +129,7 @@ export const getWeeklyReport = async (req: Request, res: Response) => {
       expenseCategoryBreakdown[expense.category] = (expenseCategoryBreakdown[expense.category] || 0) + expense.amount;
     });
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: {
         weeklyReport: {
@@ -148,7 +148,7 @@ export const getWeeklyReport = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Get weekly report error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Failed to get weekly report'
     });
@@ -240,13 +240,13 @@ export const getInsights = async (req: Request, res: Response) => {
       }
     };
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: { insights }
     });
   } catch (error) {
     console.error('Get insights error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Failed to get insights'
     });

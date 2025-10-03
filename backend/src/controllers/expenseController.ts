@@ -15,13 +15,13 @@ export const createExpense = async (req: Request, res: Response) => {
       tags
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       data: { expense }
     });
   } catch (error) {
     console.error('Create expense error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Failed to create expense'
     });
@@ -41,13 +41,13 @@ export const getExpenses = async (req: Request, res: Response) => {
 
     const expenses = await Expense.findByUserId(userId, options);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: { expenses }
     });
   } catch (error) {
     console.error('Get expenses error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Failed to get expenses'
     });
@@ -71,13 +71,13 @@ export const updateExpense = async (req: Request, res: Response) => {
 
     const updatedExpense = await Expense.update(expenseId, updateData);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: { expense: updatedExpense }
     });
   } catch (error) {
     console.error('Update expense error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Failed to update expense'
     });
@@ -107,13 +107,13 @@ export const deleteExpense = async (req: Request, res: Response) => {
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: 'Expense deleted successfully'
     });
   } catch (error) {
     console.error('Delete expense error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Failed to delete expense'
     });
@@ -130,13 +130,13 @@ export const getExpenseStats = async (req: Request, res: Response) => {
 
     const stats = await Expense.getExpenseStats(userId, start, end);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: { stats }
     });
   } catch (error) {
     console.error('Get expense stats error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Failed to get expense stats'
     });
