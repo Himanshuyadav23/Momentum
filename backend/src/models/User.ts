@@ -1,0 +1,92 @@
+import { usersCollection, firestoreHelpers } from '../services/firebase-db';
+
+export interface IUser {
+  id: string;
+  firebaseUid: string;
+  email: string;
+  name: string;
+  profilePicture?: string;
+  timeCategories: string[];
+  weeklyBudget?: number;
+  income?: number;
+  onboardingCompleted: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export class User {
+  static async create(userData: Omit<IUser, 'id' | 'createdAt' | 'updatedAt'>): Promise<IUser> {
+    const id = firestoreHelpers.generateId();
+    const now = new Date();
+    
+    const user: IUser = {
+      id,
+      ...userData,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    await usersCollection.doc(id).set({
+      ...user,
+      createdAt: firestoreHelpers.dateToTimestamp(now),
+      updatedAt: firestoreHelpers.dateToTimestamp(now)
+    });
+
+    return user;
+  }
+
+  static async findById(id: string): Promise<IUser | null> {
+    const doc = await usersCollection.doc(id).get();
+    
+    if (!doc.exists) {
+      return null;
+    }
+
+    const data = doc.data()!;
+    return {
+      id: doc.id,
+      ...data,
+      createdAt: firestoreHelpers.timestampToDate(data.createdAt),
+      updatedAt: firestoreHelpers.timestampToDate(data.updatedAt)
+    } as IUser;
+  }
+
+  static async findByFirebaseUid(firebaseUid: string): Promise<IUser | null> {
+    const snapshot = await usersCollection.where('firebaseUid', '==', firebaseUid).limit(1).get();
+    
+    if (snapshot.empty) {
+      return null;
+    }
+
+    const doc = snapshot.docs[0];
+    const data = doc.data();
+    
+    return {
+      id: doc.id,
+      ...data,
+      createdAt: firestoreHelpers.timestampToDate(data.createdAt),
+      updatedAt: firestoreHelpers.timestampToDate(data.updatedAt)
+    } as IUser;
+  }
+
+  static async update(id: string, updateData: Partial<Omit<IUser, 'id' | 'createdAt'>>): Promise<IUser | null> {
+    const now = new Date();
+    
+    await usersCollection.doc(id).update({
+      ...updateData,
+      updatedAt: firestoreHelpers.dateToTimestamp(now)
+    });
+
+    return this.findById(id);
+  }
+
+  static async delete(id: string): Promise<boolean> {
+    try {
+      await usersCollection.doc(id).delete();
+      return true;
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      return false;
+    }
+  }
+}
