@@ -35,11 +35,12 @@ export const updateProfile = async (req: Request, res: Response) => {
         }
       }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Update profile error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to update profile'
+      message: 'Failed to update profile',
+      error: error?.message || String(error)
     });
   }
 };

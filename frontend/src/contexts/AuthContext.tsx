@@ -56,11 +56,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (firebaseUser) {
         try {
           const idToken = await firebaseUser.getIdToken();
-          apiClient.setToken(idToken);
-          
           const response = await apiClient.login(idToken);
           if (response.success && response.data) {
             setUser(response.data.user);
+            // Use backend JWT for subsequent API calls
+            apiClient.setToken(response.data.token);
           }
         } catch (error) {
           console.error('Auth state change error:', error);
@@ -82,11 +82,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(true);
       const result = await signInWithPopup(auth, googleProvider);
       const idToken = await result.user.getIdToken();
-      
+
       const response = await apiClient.login(idToken);
       if (response.success && response.data) {
         setUser(response.data.user);
-        apiClient.setToken(idToken);
+        apiClient.setToken(response.data.token);
       }
     } catch (error) {
       console.error('Google sign in error:', error);
@@ -101,11 +101,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(true);
       const result = await signInWithEmailAndPassword(auth, email, password);
       const idToken = await result.user.getIdToken();
-      
+
       const response = await apiClient.login(idToken);
       if (response.success && response.data) {
         setUser(response.data.user);
-        apiClient.setToken(idToken);
+        apiClient.setToken(response.data.token);
       }
     } catch (error) {
       console.error('Email sign in error:', error);
@@ -120,11 +120,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(true);
       const result = await createUserWithEmailAndPassword(auth, email, password);
       const idToken = await result.user.getIdToken();
-      
+
       const response = await apiClient.login(idToken);
       if (response.success && response.data) {
         setUser(response.data.user);
-        apiClient.setToken(idToken);
+        apiClient.setToken(response.data.token);
       }
     } catch (error) {
       console.error('Email sign up error:', error);

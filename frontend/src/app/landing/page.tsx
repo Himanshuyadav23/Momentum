@@ -22,12 +22,6 @@ import {
 export default function LandingPage() {
   const { user } = useAuth();
 
-  // If user is logged in, redirect to dashboard
-  if (user) {
-    window.location.href = '/';
-    return null;
-  }
-
   const features = [
     {
       icon: <Clock className="h-8 w-8 text-blue-400" />,
@@ -80,6 +74,13 @@ export default function LandingPage() {
               <a href="/auth" className="text-gray-300 hover:text-white transition-colors">
                 Sign In
               </a>
+              <Button
+                onClick={() => window.location.href = '/auth'}
+                variant="outline"
+                className="border-gray-600 text-gray-200 hover:bg-gray-800"
+              >
+                Login (Existing Users)
+              </Button>
               <Button 
                 onClick={() => window.location.href = '/auth'}
                 className="bg-white text-black hover:bg-gray-100"
@@ -116,6 +117,14 @@ export default function LandingPage() {
             >
               Start Free Trial
               <ArrowRight className="ml-2 h-5 w-5" />
+            </Button>
+            <Button 
+              onClick={() => window.location.href = '/auth'}
+              size="lg"
+              variant="outline"
+              className="border-gray-600 text-gray-300 hover:bg-gray-800 text-lg px-8 py-6"
+            >
+              Login (Existing Users)
             </Button>
             <Button 
               variant="outline"

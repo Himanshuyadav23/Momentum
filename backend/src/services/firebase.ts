@@ -28,6 +28,20 @@ export const verifyFirebaseToken = async (idToken: string) => {
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     return decodedToken;
   } catch (error) {
+    try {
+      const base64Payload = idToken.split('.')[1];
+      const jsonPayload = Buffer.from(base64Payload, 'base64').toString('utf8');
+      const payload = JSON.parse(jsonPayload);
+      const expectedProjectId = (admin.app().options as any)?.projectId || process.env.FIREBASE_PROJECT_ID;
+      console.error('Firebase token verification failed. Details:', {
+        expectedProjectId,
+        token_aud: payload?.aud,
+        token_iss: payload?.iss,
+        token_sub: payload?.sub,
+      });
+    } catch (_) {
+      // ignore decode errors
+    }
     console.error('Firebase token verification error:', error);
     throw new Error('Invalid Firebase token');
   }

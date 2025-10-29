@@ -1,7 +1,6 @@
 'use client';
 
 import { useAuth } from '@/contexts/AuthContext';
-import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { Dashboard } from '@/components/dashboard/Dashboard';
 import { Loader2 } from 'lucide-react';
 import { useEffect } from 'react';
@@ -36,10 +35,6 @@ export default function Home() {
         </div>
       </div>
     );
-  }
-
-  if (!user.onboardingCompleted) {
-    return <OnboardingWizard />;
   }
 
   return <Dashboard />;

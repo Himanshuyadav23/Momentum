@@ -71,9 +71,21 @@ export class User {
 
   static async update(id: string, updateData: Partial<Omit<IUser, 'id' | 'createdAt'>>): Promise<IUser | null> {
     const now = new Date();
-    
-    await usersCollection.doc(id).update({
-      ...updateData,
+    const docRef = usersCollection.doc(id);
+    const existing = await docRef.get();
+    if (!existing.exists) {
+      return null;
+    }
+
+    const sanitized: Record<string, unknown> = {};
+    Object.entries(updateData).forEach(([key, value]) => {
+      if (value !== undefined) {
+        sanitized[key] = value;
+      }
+    });
+
+    await docRef.update({
+      ...sanitized,
       updatedAt: firestoreHelpers.dateToTimestamp(now)
     });
 
