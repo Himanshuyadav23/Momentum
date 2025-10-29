@@ -225,7 +225,7 @@ class ApiClient {
   }
 
   async getInsights() {
-    return this.request('/analytics/insights');
+    return this.request<{ insights: Array<{ type: string; title: string; message: string }> }>('/analytics/insights');
   }
 }
 
