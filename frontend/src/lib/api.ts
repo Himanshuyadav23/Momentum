@@ -215,6 +215,11 @@ class ApiClient {
     return this.request(`/expenses/stats${query ? `?${query}` : ''}`);
   }
 
+  // Backwards-compat alias used by ExpenseInsights
+  async getExpenseSummary(params?: { startDate?: string; endDate?: string }) {
+    return this.getExpenseStats(params);
+  }
+
   // Analytics endpoints
   async getDashboardAnalytics() {
     return this.request('/analytics/dashboard');

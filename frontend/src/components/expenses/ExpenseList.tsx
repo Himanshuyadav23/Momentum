@@ -39,9 +39,15 @@ export const ExpenseList: React.FC = () => {
       });
 
       if (response.success && response.data) {
-        setExpenses(response.data.expenses);
+        const d: any = response.data;
+        const list: Expense[] = Array.isArray(d?.expenses)
+          ? d.expenses
+          : Array.isArray(d)
+            ? d
+            : [];
+        setExpenses(list);
         // Extract unique categories
-        const uniqueCategories = [...new Set(response.data.expenses.map((exp: Expense) => exp.category))];
+        const uniqueCategories = Array.from(new Set(list.map((exp: Expense) => exp.category)));
         setCategories(uniqueCategories);
       }
     } catch (error) {

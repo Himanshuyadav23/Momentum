@@ -40,7 +40,13 @@ export const TimeEntries: React.FC = () => {
       });
 
       if (response.success && response.data) {
-        setEntries(response.data.entries);
+        const d: any = response.data;
+        const list: TimeEntry[] = Array.isArray(d?.entries)
+          ? d.entries
+          : Array.isArray(d)
+            ? d
+            : [];
+        setEntries(list);
       }
     } catch (error) {
       console.error('Failed to fetch time entries:', error);

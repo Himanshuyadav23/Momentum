@@ -41,16 +41,17 @@ export const TimerWidget: React.FC<TimerWidgetProps> = ({ onTimerUpdate }) => {
   const fetchActiveTimer = async () => {
     try {
       const response = await apiClient.getActiveTimer();
-      if (response.success && response.data?.activeEntry) {
-        setActiveTimer(response.data.activeEntry);
+      const d: any = response.data || {};
+      if (response.success && d?.activeEntry) {
+        setActiveTimer(d.activeEntry);
         setIsRunning(true);
-        const startTime = new Date(response.data.activeEntry.startTime);
+        const startTime = new Date(d.activeEntry.startTime);
         const now = new Date();
         const elapsed = Math.floor((now.getTime() - startTime.getTime()) / 1000);
         setTime(elapsed);
-        setCategory(response.data.activeEntry.category);
-        setDescription(response.data.activeEntry.description);
-        setIsProductive(response.data.activeEntry.isProductive);
+        setCategory(d.activeEntry.category);
+        setDescription(d.activeEntry.description);
+        setIsProductive(d.activeEntry.isProductive);
       }
     } catch (error) {
       console.error('Failed to fetch active timer:', error);
@@ -72,7 +73,8 @@ export const TimerWidget: React.FC<TimerWidgetProps> = ({ onTimerUpdate }) => {
       });
 
       if (response.success) {
-        setActiveTimer(response.data.timeEntry);
+        const d: any = response.data || {};
+        setActiveTimer(d.timeEntry ?? null);
         setIsRunning(true);
         setTime(0);
         onTimerUpdate?.();
@@ -88,7 +90,7 @@ export const TimerWidget: React.FC<TimerWidgetProps> = ({ onTimerUpdate }) => {
   const stopTimer = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.stopTimer();
+      const response = await apiClient.stopTimer(activeTimer?._id as any);
 
       if (response.success) {
         setActiveTimer(null);

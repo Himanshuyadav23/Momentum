@@ -33,7 +33,13 @@ export const HabitList: React.FC = () => {
       setLoading(true);
       const response = await apiClient.getHabits();
       if (response.success && response.data) {
-        setHabits(response.data.habits);
+        const d: any = response.data;
+        const list: Habit[] = Array.isArray(d?.habits)
+          ? d.habits
+          : Array.isArray(d)
+            ? d
+            : [];
+        setHabits(list);
       }
     } catch (error) {
       console.error('Failed to fetch habits:', error);
@@ -44,7 +50,7 @@ export const HabitList: React.FC = () => {
 
   const completeHabit = async (habitId: string) => {
     try {
-      const response = await apiClient.completeHabit(habitId);
+      const response = await apiClient.logHabit(habitId);
       if (response.success) {
         // Refresh habits to show updated streak
         fetchHabits();

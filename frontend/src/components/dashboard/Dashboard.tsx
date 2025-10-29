@@ -50,7 +50,24 @@ export const Dashboard: React.FC = () => {
     try {
       const response = await apiClient.getDashboardAnalytics();
       if (response.success && response.data) {
-        setDashboardData(response.data);
+        const d: any = response.data;
+        const normalized: DashboardData = {
+          time: {
+            productive: Number(d?.time?.productive ?? 0),
+            wasted: Number(d?.time?.wasted ?? 0),
+            total: Number(d?.time?.total ?? 0),
+          },
+          habits: {
+            completed: Number(d?.habits?.completed ?? 0),
+            total: Number(d?.habits?.total ?? 0),
+            percentage: Number(d?.habits?.percentage ?? 0),
+          },
+          expenses: {
+            total: Number(d?.expenses?.total ?? 0),
+            count: Number(d?.expenses?.count ?? 0),
+          },
+        };
+        setDashboardData(normalized);
       }
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error);
@@ -63,7 +80,8 @@ export const Dashboard: React.FC = () => {
     try {
       const response = await apiClient.getActiveTimer();
       if (response.success && response.data) {
-        setActiveTimer(response.data.activeEntry);
+        const d: any = response.data;
+        setActiveTimer(d?.activeEntry ?? null);
       }
     } catch (error) {
       console.error('Failed to fetch active timer:', error);

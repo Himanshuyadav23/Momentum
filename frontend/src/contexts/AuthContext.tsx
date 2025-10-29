@@ -58,9 +58,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const idToken = await firebaseUser.getIdToken();
           const response = await apiClient.login(idToken);
           if (response.success && response.data) {
-            setUser(response.data.user);
+            const d: any = response.data;
+            setUser(d.user);
             // Use backend JWT for subsequent API calls
-            apiClient.setToken(response.data.token);
+            apiClient.setToken(d.token);
           }
         } catch (error) {
           console.error('Auth state change error:', error);
@@ -85,8 +86,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const response = await apiClient.login(idToken);
       if (response.success && response.data) {
-        setUser(response.data.user);
-        apiClient.setToken(response.data.token);
+        const d: any = response.data;
+        setUser(d.user);
+        apiClient.setToken(d.token);
       }
     } catch (error) {
       console.error('Google sign in error:', error);
@@ -104,8 +106,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const response = await apiClient.login(idToken);
       if (response.success && response.data) {
-        setUser(response.data.user);
-        apiClient.setToken(response.data.token);
+        const d: any = response.data;
+        setUser(d.user);
+        apiClient.setToken(d.token);
       }
     } catch (error) {
       console.error('Email sign in error:', error);
@@ -123,8 +126,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const response = await apiClient.login(idToken);
       if (response.success && response.data) {
-        setUser(response.data.user);
-        apiClient.setToken(response.data.token);
+        const d: any = response.data;
+        setUser(d.user);
+        apiClient.setToken(d.token);
       }
     } catch (error) {
       console.error('Email sign up error:', error);
@@ -149,7 +153,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const response = await apiClient.updateProfile(userData);
       if (response.success && response.data) {
-        setUser(response.data.user);
+        const d: any = response.data;
+        setUser(d.user);
       }
     } catch (error) {
       console.error('Update user error:', error);
