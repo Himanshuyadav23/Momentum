@@ -224,6 +224,11 @@ class ApiClient {
     return this.request('/analytics/weekly');
   }
 
+  // Backwards-compat alias used by WeeklyReport component
+  async getWeeklyAnalytics() {
+    return this.request('/analytics/weekly');
+  }
+
   async getInsights() {
     return this.request<{ insights: Array<{ type: string; title: string; message: string }> }>('/analytics/insights');
   }
