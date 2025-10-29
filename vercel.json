@@ -1,12 +1,5 @@
 {
-  "builds": [
-    { "src": "frontend/next.config.js", "use": "@vercel/next" }
-  ],
-  "installCommand": "cd frontend && npm ci --include=dev",
-  "buildCommand": "cd frontend && npm run build",
-  "routes": [
-    { "src": "/(.*)", "dest": "/$1" }
-  ]
+  "framework": "nextjs"
 }
 
 
