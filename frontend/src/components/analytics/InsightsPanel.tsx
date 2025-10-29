@@ -29,7 +29,16 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({ refreshKey }) => {
       setLoading(true);
       const response = await apiClient.getInsights();
       if (response.success && response.data) {
-        setInsights(response.data.insights);
+        const normalized = response.data.insights.map((i: any) => {
+          const t = i?.type;
+          const type: Insight['type'] = t === 'positive' || t === 'warning' || t === 'negative' ? t : 'positive';
+          return {
+            type,
+            title: String(i?.title ?? ''),
+            message: String(i?.message ?? ''),
+          } as Insight;
+        });
+        setInsights(normalized);
       }
     } catch (error) {
       console.error('Failed to fetch insights:', error);
