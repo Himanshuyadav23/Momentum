@@ -5,13 +5,8 @@ const initializeFirebase = () => {
   if (!admin.apps.length) {
     // Check if we have the required environment variables
     if (!process.env.FIREBASE_PROJECT_ID) {
-      console.warn('⚠️  Firebase environment variables not set. Using default configuration for development.');
-      console.warn('   To use Firebase, set FIREBASE_PROJECT_ID and other Firebase env vars.');
-      
-      // Initialize with default app for development
-      admin.initializeApp({
-        projectId: 'momentum-dev',
-      });
+      console.error('❌ FIREBASE_PROJECT_ID is not set. Please configure backend/.env before starting the server.');
+      throw new Error('Missing FIREBASE_PROJECT_ID');
     } else {
       const serviceAccount = {
         type: "service_account",

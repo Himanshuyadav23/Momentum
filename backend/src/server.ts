@@ -1,10 +1,9 @@
+import './loadEnv';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
-import dotenv from 'dotenv';
-
 // Import Firebase database initialization
 import './services/firebase-db';
 
@@ -20,8 +19,7 @@ import analyticsRoutes from './routes/analytics';
 import { errorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
 
-// Load environment variables
-dotenv.config();
+// Environment loaded via ./loadEnv
 
 const app = express();
 const PORT = process.env.PORT || 5000;

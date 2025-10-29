@@ -205,3 +205,4 @@ export const ManualTimeEntry: React.FC<ManualTimeEntryProps> = ({ onEntryAdded }
 };
 
 
+
