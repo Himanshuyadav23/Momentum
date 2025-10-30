@@ -50,6 +50,27 @@ export const getDashboardData = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Get dashboard data error:', error);
+    const err: any = error;
+    const details: string | undefined = err?.details || err?.message;
+    const needsIndex = typeof details === 'string' && details.includes('requires an index');
+    if (needsIndex) {
+      const match = details.match(/https:\/\/console\.firebase\.google\.com[^\s"']+/);
+      const indexUrl = match ? match[0] : undefined;
+      return res.status(200).json({
+        success: true,
+        data: {
+          dashboard: {
+            totalTimeToday: 0,
+            totalExpensesToday: 0,
+            completedHabitsToday: 0,
+            totalHabits: 0,
+            activeTimer: null
+          }
+        },
+        message: 'Missing Firestore index; returning empty dashboard data.',
+        error: indexUrl ? `Create index: ${indexUrl}` : 'Create the required Firestore composite index.'
+      });
+    }
     return res.status(500).json({
       success: false,
       message: 'Failed to get dashboard data'
@@ -148,6 +169,32 @@ export const getWeeklyReport = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Get weekly report error:', error);
+    const err: any = error;
+    const details: string | undefined = err?.details || err?.message;
+    const needsIndex = typeof details === 'string' && details.includes('requires an index');
+    if (needsIndex) {
+      const match = details.match(/https:\/\/console\.firebase\.google\.com[^\s"']+/);
+      const indexUrl = match ? match[0] : undefined;
+      return res.status(200).json({
+        success: true,
+        data: {
+          weeklyReport: {
+            startDate: null,
+            endDate: null,
+            dailyTimeBreakdown: {},
+            dailyHabitBreakdown: {},
+            dailyExpenseBreakdown: {},
+            timeCategoryBreakdown: {},
+            expenseCategoryBreakdown: {},
+            totalTime: 0,
+            totalHabits: 0,
+            totalExpenses: 0
+          }
+        },
+        message: 'Missing Firestore index; returning empty weekly report.',
+        error: indexUrl ? `Create index: ${indexUrl}` : 'Create the required Firestore composite index.'
+      });
+    }
     return res.status(500).json({
       success: false,
       message: 'Failed to get weekly report'

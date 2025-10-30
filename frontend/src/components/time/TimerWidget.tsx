@@ -42,16 +42,17 @@ export const TimerWidget: React.FC<TimerWidgetProps> = ({ onTimerUpdate }) => {
     try {
       const response = await apiClient.getActiveTimer();
       const d: any = response.data || {};
-      if (response.success && d?.activeEntry) {
-        setActiveTimer(d.activeEntry);
+      const active = d.timeEntry || d.activeEntry || null;
+      if (response.success && active) {
+        setActiveTimer(active);
         setIsRunning(true);
-        const startTime = new Date(d.activeEntry.startTime);
+        const startTime = new Date(active.startTime);
         const now = new Date();
         const elapsed = Math.floor((now.getTime() - startTime.getTime()) / 1000);
         setTime(elapsed);
-        setCategory(d.activeEntry.category);
-        setDescription(d.activeEntry.description);
-        setIsProductive(d.activeEntry.isProductive);
+        setCategory(active.category);
+        setDescription(active.description);
+        setIsProductive(active.isProductive);
       }
     } catch (error) {
       console.error('Failed to fetch active timer:', error);
@@ -79,9 +80,16 @@ export const TimerWidget: React.FC<TimerWidgetProps> = ({ onTimerUpdate }) => {
         setTime(0);
         onTimerUpdate?.();
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to start timer:', error);
-      alert('Failed to start timer');
+      // Try to extract a backend error message
+      let message = 'Failed to start timer';
+      if (error?.response?.data?.message) {
+        message = error.response.data.message;
+      } else if (error?.message) {
+        message = error.message;
+      }
+      alert(message);
     } finally {
       setLoading(false);
     }
@@ -90,7 +98,7 @@ export const TimerWidget: React.FC<TimerWidgetProps> = ({ onTimerUpdate }) => {
   const stopTimer = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.stopTimer(activeTimer?._id as any);
+      const response = await apiClient.stopTimer((activeTimer?.id || activeTimer?._id) as any);
 
       if (response.success) {
         setActiveTimer(null);

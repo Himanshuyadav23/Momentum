@@ -6,13 +6,14 @@ export const createExpense = async (req: Request, res: Response) => {
     const userId = (req as any).user.id;
     const { amount, category, description, date, tags } = req.body;
 
+    // Sanitize payload: Firestore rejects undefined fields like tags
     const expense = await Expense.create({
       userId,
       amount,
       category,
       description,
       date: date ? new Date(date) : new Date(),
-      tags
+      // Do not include tags at write time unless explicitly supported by schema
     });
 
     return res.status(201).json({
@@ -47,6 +48,19 @@ export const getExpenses = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Get expenses error:', error);
+    const err: any = error;
+    const details: string | undefined = err?.details || err?.message;
+    const needsIndex = typeof details === 'string' && details.includes('requires an index');
+    if (needsIndex) {
+      const match = details.match(/https:\/\/console\.firebase\.google\.com[^\s"']+/);
+      const indexUrl = match ? match[0] : undefined;
+      return res.status(200).json({
+        success: true,
+        data: { expenses: [] },
+        message: 'Missing Firestore index; returning empty expenses.',
+        error: indexUrl ? `Create index: ${indexUrl}` : 'Create the required Firestore composite index.'
+      });
+    }
     return res.status(500).json({
       success: false,
       message: 'Failed to get expenses'
@@ -136,6 +150,19 @@ export const getExpenseStats = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Get expense stats error:', error);
+    const err: any = error;
+    const details: string | undefined = err?.details || err?.message;
+    const needsIndex = typeof details === 'string' && details.includes('requires an index');
+    if (needsIndex) {
+      const match = details.match(/https:\/\/console\.firebase\.google\.com[^\s"']+/);
+      const indexUrl = match ? match[0] : undefined;
+      return res.status(200).json({
+        success: true,
+        data: { stats: { total: 0, byCategory: {}, byDay: {} } },
+        message: 'Missing Firestore index; returning empty expense stats.',
+        error: indexUrl ? `Create index: ${indexUrl}` : 'Create the required Firestore composite index.'
+      });
+    }
     return res.status(500).json({
       success: false,
       message: 'Failed to get expense stats'

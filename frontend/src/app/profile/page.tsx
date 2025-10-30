@@ -2,10 +2,21 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { ProfileSettings } from '@/components/profile/ProfileSettings';
+import { Loader2 } from 'lucide-react';
 
 export default function ProfilePage() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
 
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-black">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-white" />
+          <p className="text-gray-300">Loading...</p>
+        </div>
+      </div>
+    );
+  }
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black">

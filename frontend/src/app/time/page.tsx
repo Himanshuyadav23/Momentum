@@ -5,15 +5,26 @@ import { TimerWidget } from '@/components/time/TimerWidget';
 import { TimeEntries } from '@/components/time/TimeEntries';
 import { ManualTimeEntry } from '@/components/time/ManualTimeEntry';
 import { useState } from 'react';
+import { Loader2 } from 'lucide-react';
 
 export default function TimePage() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const [refreshKey, setRefreshKey] = useState(0);
 
   const handleTimerUpdate = () => {
     setRefreshKey(prev => prev + 1);
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-black">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-white" />
+          <p className="text-gray-300">Loading...</p>
+        </div>
+      </div>
+    );
+  }
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black">

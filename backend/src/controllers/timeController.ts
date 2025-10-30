@@ -113,6 +113,20 @@ export const getTimeEntries = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Get time entries error:', error);
+    // Graceful fallback if Firestore composite index is missing
+    const err: any = error;
+    const details: string | undefined = err?.details || err?.message;
+    const needsIndex = typeof details === 'string' && details.includes('requires an index');
+    if (needsIndex) {
+      const match = details.match(/https:\/\/console\.firebase\.google\.com[^\s"']+/);
+      const indexUrl = match ? match[0] : undefined;
+      return res.status(200).json({
+        success: true,
+        data: { timeEntries: [] },
+        message: 'Missing Firestore index; returning empty results to keep UI responsive.',
+        error: indexUrl ? `Create index: ${indexUrl}` : 'Create the required Firestore composite index for timeEntries.'
+      });
+    }
     return res.status(500).json({
       success: false,
       message: 'Failed to get time entries'

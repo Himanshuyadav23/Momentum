@@ -222,20 +222,117 @@ class ApiClient {
 
   // Analytics endpoints
   async getDashboardAnalytics() {
-    return this.request('/analytics/dashboard');
+    const res = await this.request('/analytics/dashboard');
+    // Normalize backend shape { data: { dashboard: { ... } } } to frontend expectation
+    if (res && (res as any).data && (res as any).data.dashboard) {
+      const d: any = (res as any).data.dashboard;
+      const totalTimeToday = Number(d.totalTimeToday ?? 0);
+      const completedHabitsToday = Number(d.completedHabitsToday ?? 0);
+      const totalHabits = Number(d.totalHabits ?? 0);
+      const totalExpensesToday = Number(d.totalExpensesToday ?? 0);
+      const activeEntry = d.activeTimer ?? null;
+
+      const normalized = {
+        success: true,
+        data: {
+          time: {
+            productive: totalTimeToday,
+            wasted: 0,
+            total: totalTimeToday,
+          },
+          habits: {
+            completed: completedHabitsToday,
+            total: totalHabits,
+            percentage: totalHabits > 0 ? Math.round((completedHabitsToday / totalHabits) * 100) : 0,
+          },
+          expenses: {
+            total: totalExpensesToday,
+            count: 0,
+          },
+          activeEntry,
+        },
+      } as ApiResponse;
+      return normalized;
+    }
+    return res;
   }
 
   async getWeeklyReport() {
-    return this.request('/analytics/weekly');
+    const res = await this.request('/analytics/weekly');
+    if (res && (res as any).data && (res as any).data.weeklyReport) {
+      const r: any = (res as any).data.weeklyReport;
+      const totalTime = Number(r.totalTime ?? 0);
+      const totalHabits = Number(r.totalHabits ?? 0);
+      const totalExpenses = Number(r.totalExpenses ?? 0);
+      const expenseCategoryBreakdown = r.expenseCategoryBreakdown || {};
+      // Create a shape WeeklyReport.tsx expects
+      const normalized = {
+        success: true,
+        data: {
+          time: {
+            productive: totalTime,
+            wasted: 0,
+            total: totalTime,
+          },
+          habits: {
+            completedLogs: totalHabits,
+            totalHabits: totalHabits,
+            streaks: [],
+          },
+          expenses: {
+            total: totalExpenses,
+            categoryBreakdown: expenseCategoryBreakdown,
+          },
+        },
+      } as ApiResponse;
+      return normalized;
+    }
+    return res;
   }
 
   // Backwards-compat alias used by WeeklyReport component
   async getWeeklyAnalytics() {
-    return this.request('/analytics/weekly');
+    return this.getWeeklyReport();
   }
 
   async getInsights() {
-    return this.request<{ insights: Array<{ type: string; title: string; message: string }> }>('/analytics/insights');
+    const res = await this.request('/analytics/insights');
+    // Backend returns { data: { insights: { productivity: {...}, expenses: {...}, habits: {...} } } }
+    // Map to array of { type, title, message }
+    try {
+      const raw = (res as any)?.data?.insights;
+      if (!raw) return res;
+      const items: Array<{ type: string; title: string; message: string }> = [];
+      const ratio = Number(raw.productivity?.productivityRatio ?? 0);
+      items.push({
+        type: ratio >= 60 ? 'positive' : ratio >= 40 ? 'warning' : 'negative',
+        title: 'Productivity ratio',
+        message: `${Math.round(ratio)}% of tracked time was productive in the last 30 days.`,
+      });
+      if (raw.productivity?.mostProductiveCategory) {
+        items.push({
+          type: 'positive',
+          title: 'Top productive category',
+          message: `${raw.productivity.mostProductiveCategory.category} led with ${Math.round(raw.productivity.mostProductiveCategory.time)} minutes.`,
+        });
+      }
+      if (raw.expenses?.topExpenseCategory) {
+        items.push({
+          type: 'warning',
+          title: 'Top expense category',
+          message: `${raw.expenses.topExpenseCategory.category} accounted for ${Math.round(raw.expenses.topExpenseCategory.amount)} spent.`,
+        });
+      }
+      items.push({
+        type: 'positive',
+        title: 'Habit consistency',
+        message: `Average of ${Math.round(Number(raw.habits?.averageDailyHabits ?? 0))} habits completed per day in the last 30 days.`,
+      });
+
+      return { success: true, data: { insights: items } } as ApiResponse;
+    } catch {
+      return res;
+    }
   }
 }
 
