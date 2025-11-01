@@ -16,23 +16,31 @@ export interface IUser {
 
 export class User {
   static async create(userData: Omit<IUser, 'id' | 'createdAt' | 'updatedAt'>): Promise<IUser> {
-    const id = firestoreHelpers.generateId();
-    const now = new Date();
-    
-    const user: IUser = {
-      id,
-      ...userData,
-      createdAt: now,
-      updatedAt: now
-    };
+    try {
+      const id = firestoreHelpers.generateId();
+      const now = new Date();
+      
+      const user: IUser = {
+        id,
+        ...userData,
+        createdAt: now,
+        updatedAt: now
+      };
 
-    await usersCollection().doc(id).set({
-      ...user,
-      createdAt: firestoreHelpers.dateToTimestamp(now),
-      updatedAt: firestoreHelpers.dateToTimestamp(now)
-    });
+      await usersCollection().doc(id).set({
+        ...user,
+        createdAt: firestoreHelpers.dateToTimestamp(now),
+        updatedAt: firestoreHelpers.dateToTimestamp(now)
+      });
 
-    return user;
+      return user;
+    } catch (error: any) {
+      console.error('Error creating user:', error);
+      if (error.message?.includes('not initialized')) {
+        throw new Error('Database not initialized. Please check Firebase configuration and environment variables.');
+      }
+      throw new Error(`Failed to create user: ${error.message || 'Unknown error'}`);
+    }
   }
 
   static async findById(id: string): Promise<IUser | null> {

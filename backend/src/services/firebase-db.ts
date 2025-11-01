@@ -86,22 +86,29 @@ export const retryFirebaseInit = () => {
   return true;
 };
 
-// Export with null checks and retry logic - NEVER throw, always retry
+// Export with null checks and retry logic
 const getDb = () => {
   if (!db) {
     // Try to initialize again - maybe .env was loaded after module import
     console.log('⚠️ Firebase not initialized. Attempting to initialize...');
     const retried = initializeFirebase();
     if (!retried || !db) {
-      // Try one more time after a short delay
-      console.log('⚠️ Retrying Firebase initialization in 2 seconds...');
-      setTimeout(() => {
-        initializeFirebase();
-      }, 2000);
-      // Still return db if it exists, otherwise throw (but this should be caught)
-      if (!db) {
-        throw new Error('Firebase Firestore not initialized. Please check your .env configuration in backend/.env');
+      // Log detailed error information
+      const errorMsg = 'Firebase Firestore not initialized. Please check your environment variables:';
+      const requiredVars = [
+        'FIREBASE_PROJECT_ID',
+        'FIREBASE_PRIVATE_KEY',
+        'FIREBASE_CLIENT_EMAIL'
+      ];
+      const missingVars = requiredVars.filter(v => !process.env[v]);
+      
+      console.error(`❌ ${errorMsg}`);
+      if (missingVars.length > 0) {
+        console.error(`   Missing: ${missingVars.join(', ')}`);
       }
+      console.error('   Please configure these in your deployment platform (Vercel/Railway/etc.) environment settings.');
+      
+      throw new Error(`Firebase Firestore not initialized. Missing: ${missingVars.join(', ')}. Please configure these environment variables.`);
     }
   }
   return db;

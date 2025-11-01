@@ -23,14 +23,23 @@ export const authenticate = async (req: Request, res: Response) => {
 
     if (!user) {
       // Create new user
-      user = await User.create({
-        firebaseUid: decodedToken.uid,
-        email: firebaseUser.email!,
-        name: firebaseUser.displayName || firebaseUser.email!.split('@')[0],
-        profilePicture: firebaseUser.photoURL || '',
-        timeCategories: [],
-        onboardingCompleted: false
-      });
+      try {
+        user = await User.create({
+          firebaseUid: decodedToken.uid,
+          email: firebaseUser.email!,
+          name: firebaseUser.displayName || firebaseUser.email!.split('@')[0],
+          profilePicture: firebaseUser.photoURL || '',
+          timeCategories: [],
+          onboardingCompleted: false
+        });
+      } catch (createError: any) {
+        console.error('User creation error:', createError);
+        // If it's a database initialization error, provide helpful message
+        if (createError.message?.includes('not initialized') || createError.message?.includes('Database')) {
+          throw new Error('Database not initialized. Please check Firebase Admin SDK configuration in backend environment variables.');
+        }
+        throw createError;
+      }
     }
 
     // Generate JWT token
@@ -62,15 +71,23 @@ export const authenticate = async (req: Request, res: Response) => {
     
     // Provide more specific error messages
     let errorMessage = 'Authentication failed';
+    let statusCode = 401;
+    
     if (error?.message?.includes('token')) {
       errorMessage = 'Invalid Firebase token';
     } else if (error?.message?.includes('network') || error?.message?.includes('fetch')) {
       errorMessage = 'Network error. Please check your connection.';
+    } else if (error?.message?.includes('not initialized') || error?.message?.includes('Database')) {
+      errorMessage = 'Database configuration error. Please check backend environment variables.';
+      statusCode = 500;
+    } else if (error?.message?.includes('Missing:') || error?.message?.includes('environment variables')) {
+      errorMessage = error.message;
+      statusCode = 500;
     } else if (error?.message) {
       errorMessage = error.message;
     }
     
-    return res.status(401).json({
+    return res.status(statusCode).json({
       success: false,
       message: errorMessage,
       error: process.env.NODE_ENV === 'development' ? error?.message : undefined
