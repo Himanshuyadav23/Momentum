@@ -28,10 +28,24 @@ const EXPENSE_CATEGORIES = [
   'Other'
 ];
 
+const CURRENCIES = [
+  { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
+  { code: 'USD', symbol: '$', name: 'US Dollar' },
+  { code: 'EUR', symbol: '€', name: 'Euro' },
+  { code: 'GBP', symbol: '£', name: 'British Pound' },
+  { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
+  { code: 'AUD', symbol: 'A$', name: 'Australian Dollar' },
+  { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar' },
+  { code: 'SGD', symbol: 'S$', name: 'Singapore Dollar' },
+  { code: 'AED', symbol: 'د.إ', name: 'UAE Dirham' },
+  { code: 'SAR', symbol: '﷼', name: 'Saudi Riyal' }
+];
+
 export const AddExpense: React.FC<AddExpenseProps> = ({ onExpenseAdded }) => {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     amount: '',
+    currency: 'INR', // Default to INR
     category: '',
     description: '',
     date: ''
@@ -55,25 +69,28 @@ export const AddExpense: React.FC<AddExpenseProps> = ({ onExpenseAdded }) => {
       setLoading(true);
       const response = await apiClient.createExpense({
         amount,
+        currency: formData.currency,
         category: formData.category.trim(),
         description: formData.description.trim() || undefined,
         date: formData.date || undefined
       });
 
       if (response.success) {
-        // Reset form
+        // Reset form (keep currency selection)
         setFormData({
           amount: '',
+          currency: formData.currency, // Keep currency selection
           category: '',
           description: '',
           date: ''
         });
         onExpenseAdded?.();
-        alert('Expense added successfully!');
+      } else {
+        throw new Error(response.message || 'Failed to add expense');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to add expense:', error);
-      alert('Failed to add expense');
+      alert(error?.message || 'Failed to add expense. Please check the console for details.');
     } finally {
       setLoading(false);
     }
@@ -101,21 +118,40 @@ export const AddExpense: React.FC<AddExpenseProps> = ({ onExpenseAdded }) => {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="amount" className="text-gray-300">Amount</Label>
-            <div className="relative">
-              <DollarSign className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-              <Input
-                id="amount"
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0.00"
-                value={formData.amount}
-                onChange={(e) => handleInputChange('amount', e.target.value)}
-                className="pl-10 bg-gray-700 border-gray-600 text-white placeholder-gray-400"
-                required
-              />
+          <div className="grid grid-cols-3 gap-4">
+            <div className="col-span-2 space-y-2">
+              <Label htmlFor="amount" className="text-gray-300">Amount</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-3 text-gray-400 font-semibold">
+                  {CURRENCIES.find(c => c.code === formData.currency)?.symbol || '₹'}
+                </span>
+                <Input
+                  id="amount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={formData.amount}
+                  onChange={(e) => handleInputChange('amount', e.target.value)}
+                  className="pl-10 bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+                  required
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="currency" className="text-gray-300">Currency</Label>
+              <select
+                id="currency"
+                value={formData.currency}
+                onChange={(e) => handleInputChange('currency', e.target.value)}
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:border-white"
+              >
+                {CURRENCIES.map((currency) => (
+                  <option key={currency.code} value={currency.code}>
+                    {currency.code} - {currency.symbol}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 

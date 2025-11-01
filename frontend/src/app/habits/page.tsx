@@ -69,7 +69,7 @@ export default function HabitsPage() {
 
           {/* Middle Column - Habit List */}
           <div className="lg:col-span-1">
-            <HabitList />
+            <HabitList refreshTrigger={refreshKey} />
           </div>
 
           {/* Right Column - Statistics */}

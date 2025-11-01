@@ -32,10 +32,14 @@ export const ExpenseInsights: React.FC<ExpenseInsightsProps> = ({ refreshKey }) 
       });
 
       if (response.success && response.data) {
-        setInsights(response.data);
+        // Handle both { stats: {...} } and direct {...} formats
+        const responseData = response.data as any;
+        const insightsData = responseData.stats || responseData;
+        setInsights(insightsData);
       }
     } catch (error) {
       console.error('Failed to fetch expense insights:', error);
+      setInsights(null);
     } finally {
       setLoading(false);
     }
@@ -58,11 +62,33 @@ export const ExpenseInsights: React.FC<ExpenseInsightsProps> = ({ refreshKey }) 
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
+  const CURRENCY_SYMBOLS: { [key: string]: string } = {
+    INR: '₹',
+    USD: '$',
+    EUR: '€',
+    GBP: '£',
+    JPY: '¥',
+    AUD: 'A$',
+    CAD: 'C$',
+    SGD: 'S$',
+    AED: 'د.إ',
+    SAR: '﷼'
+  };
+
+  const formatCurrency = (amount: number, currency: string = 'INR') => {
+    const currencyCode = currency || 'INR';
+    try {
+      return new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency: currencyCode,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(amount);
+    } catch {
+      // Fallback if currency code is invalid
+      const symbol = CURRENCY_SYMBOLS[currencyCode] || '₹';
+      return `${symbol}${amount.toFixed(2)}`;
+    }
   };
 
   if (loading) {
@@ -123,14 +149,28 @@ export const ExpenseInsights: React.FC<ExpenseInsightsProps> = ({ refreshKey }) 
         {/* Summary Stats */}
         <div className="grid grid-cols-2 gap-4">
           <div className="text-center p-4 bg-gray-700 rounded-lg">
-            <div className="text-2xl font-bold text-white">{formatCurrency(insights.totalAmount)}</div>
+            <div className="text-2xl font-bold text-white">
+              {formatCurrency(insights.totalAmount || 0, 'INR')}
+            </div>
             <div className="text-sm text-gray-400">Total Spent</div>
           </div>
           <div className="text-center p-4 bg-gray-700 rounded-lg">
-            <div className="text-2xl font-bold text-white">{insights.expenseCount}</div>
+            <div className="text-2xl font-bold text-white">{insights.expenseCount || 0}</div>
             <div className="text-sm text-gray-400">Transactions</div>
           </div>
         </div>
+
+        {/* Average Daily Spending */}
+        {insights.averageDaily > 0 && (
+          <div className="p-4 bg-gradient-to-r from-blue-900 to-blue-800 rounded-lg">
+            <div className="text-center">
+              <div className="text-xl font-bold text-white">
+                {formatCurrency(insights.averageDaily || 0, 'INR')}
+              </div>
+              <div className="text-sm text-blue-200">Average per day</div>
+            </div>
+          </div>
+        )}
 
         {/* Category Breakdown */}
         <div className="space-y-4">
@@ -141,7 +181,8 @@ export const ExpenseInsights: React.FC<ExpenseInsightsProps> = ({ refreshKey }) 
           
           <div className="space-y-3">
             {sortedCategories.slice(0, 5).map(([category, amount], index) => {
-              const percentage = ((amount as number) / insights.totalAmount) * 100;
+              const total = insights.totalAmount || 1;
+              const percentage = ((amount as number) / total) * 100;
               return (
                 <div key={category} className="space-y-2">
                   <div className="flex items-center justify-between">
@@ -152,7 +193,7 @@ export const ExpenseInsights: React.FC<ExpenseInsightsProps> = ({ refreshKey }) 
                       <span className="text-sm text-gray-300">{category}</span>
                     </div>
                     <div className="text-right">
-                      <div className="text-sm font-bold text-white">{formatCurrency(amount as number)}</div>
+                      <div className="text-sm font-bold text-white">{formatCurrency(amount as number, 'INR')}</div>
                       <div className="text-xs text-gray-400">{percentage.toFixed(1)}%</div>
                     </div>
                   </div>
@@ -160,6 +201,9 @@ export const ExpenseInsights: React.FC<ExpenseInsightsProps> = ({ refreshKey }) 
                 </div>
               );
             })}
+            {sortedCategories.length === 0 && (
+              <p className="text-sm text-gray-400 text-center py-4">No expenses in this period</p>
+            )}
           </div>
         </div>
 
@@ -188,7 +232,7 @@ export const ExpenseInsights: React.FC<ExpenseInsightsProps> = ({ refreshKey }) 
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm font-bold text-white">{formatCurrency(amount as number)}</div>
+                  <div className="text-sm font-bold text-white">{formatCurrency(amount as number, 'INR')}</div>
                 </div>
               </div>
             ))}
@@ -196,14 +240,16 @@ export const ExpenseInsights: React.FC<ExpenseInsightsProps> = ({ refreshKey }) 
         </div>
 
         {/* Average per Transaction */}
-        <div className="p-4 bg-gray-700 rounded-lg">
-          <div className="text-center">
-            <div className="text-lg font-bold text-white">
-              {formatCurrency(insights.totalAmount / Math.max(insights.expenseCount, 1))}
+        {insights.expenseCount > 0 && (
+          <div className="p-4 bg-gray-700 rounded-lg">
+            <div className="text-center">
+              <div className="text-lg font-bold text-white">
+                {formatCurrency((insights.totalAmount || 0) / Math.max(insights.expenseCount || 1, 1), 'INR')}
+              </div>
+              <div className="text-sm text-gray-400">Average per transaction</div>
             </div>
-            <div className="text-sm text-gray-400">Average per transaction</div>
           </div>
-        </div>
+        )}
       </CardContent>
     </Card>
   );

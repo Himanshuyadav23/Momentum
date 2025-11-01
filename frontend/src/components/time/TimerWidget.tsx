@@ -163,27 +163,43 @@ export const TimerWidget: React.FC<TimerWidgetProps> = ({ onTimerUpdate }) => {
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="category" className="text-gray-300">Category</Label>
-                <Input
-                  id="category"
-                  placeholder="e.g., Work, Study"
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="description" className="text-gray-300">Description</Label>
-                <Input
-                  id="description"
-                  placeholder="What are you working on?"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="category" className="text-gray-300">Category</Label>
+              {user?.timeCategories && user.timeCategories.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {user.timeCategories.slice(0, 6).map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setCategory(cat)}
+                      className={`px-2 py-1 text-xs rounded-md border transition-colors ${
+                        category === cat
+                          ? 'bg-white text-black border-white'
+                          : 'bg-gray-700 text-gray-300 border-gray-600 hover:border-gray-400'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <Input
+                id="category"
+                placeholder="e.g., Work, Study"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description" className="text-gray-300">Description</Label>
+              <Input
+                id="description"
+                placeholder="What are you working on?"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+              />
             </div>
 
             <div className="flex items-center space-x-4">

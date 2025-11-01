@@ -8,9 +8,10 @@ import { apiClient } from '@/lib/api';
 import { Target, Flame, Calendar, TrendingUp } from 'lucide-react';
 
 interface Habit {
-  _id: string;
+  id: string;
   name: string;
   frequency: 'daily' | 'weekly';
+  targetCount: number;
   currentStreak: number;
   longestStreak: number;
   isActive: boolean;
@@ -93,6 +94,18 @@ export const HabitStats: React.FC<HabitStatsProps> = ({ refreshKey }) => {
           </div>
         </div>
 
+        {/* Total Target Count */}
+        {habits.some(h => h.targetCount > 1) && (
+          <div className="p-4 bg-gradient-to-r from-blue-900 to-blue-800 rounded-lg">
+            <div className="text-center">
+              <div className="text-xl font-bold text-white">
+                {habits.reduce((sum, h) => sum + h.targetCount, 0)}
+              </div>
+              <div className="text-sm text-blue-200">Total Daily Targets</div>
+            </div>
+          </div>
+        )}
+
         {/* Streak Stats */}
         <div className="space-y-4">
           <h3 className="text-lg font-medium text-white flex items-center space-x-2">
@@ -155,7 +168,7 @@ export const HabitStats: React.FC<HabitStatsProps> = ({ refreshKey }) => {
               .slice(0, 3)
               .map((habit, index) => (
                 <div
-                  key={habit._id}
+                  key={habit.id}
                   className="flex items-center justify-between p-3 bg-gray-700 rounded-lg"
                 >
                   <div className="flex items-center space-x-3">
@@ -164,7 +177,9 @@ export const HabitStats: React.FC<HabitStatsProps> = ({ refreshKey }) => {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-white">{habit.name}</p>
-                      <p className="text-xs text-gray-400">{habit.frequency}</p>
+                      <p className="text-xs text-gray-400">
+                        {habit.frequency} {habit.targetCount > 1 && `• Target: ${habit.targetCount}`}
+                      </p>
                     </div>
                   </div>
                   <div className="text-right">

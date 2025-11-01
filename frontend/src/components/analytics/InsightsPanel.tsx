@@ -7,9 +7,11 @@ import { apiClient } from '@/lib/api';
 import { Lightbulb, TrendingUp, TrendingDown, AlertTriangle, CheckCircle } from 'lucide-react';
 
 interface Insight {
-  type: 'positive' | 'warning' | 'negative';
+  type: 'positive' | 'warning' | 'negative' | 'recommendation';
+  category?: 'productivity' | 'habits' | 'expenses' | 'overall';
   title: string;
   message: string;
+  priority?: number;
 }
 
 interface InsightsPanelProps {
@@ -31,13 +33,20 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({ refreshKey }) => {
       if (response.success && response.data) {
         const normalized = response.data.insights.map((i: any) => {
           const t = i?.type;
-          const type: Insight['type'] = t === 'positive' || t === 'warning' || t === 'negative' ? t : 'positive';
+          const type: Insight['type'] = 
+            t === 'positive' || t === 'warning' || t === 'negative' || t === 'recommendation' 
+              ? t 
+              : 'recommendation';
           return {
             type,
+            category: i?.category,
             title: String(i?.title ?? ''),
             message: String(i?.message ?? ''),
+            priority: i?.priority || 0,
           } as Insight;
         });
+        // Sort by priority (highest first)
+        normalized.sort((a: Insight, b: Insight) => (b.priority || 0) - (a.priority || 0));
         setInsights(normalized);
       }
     } catch (error) {
@@ -55,6 +64,8 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({ refreshKey }) => {
         return <AlertTriangle className="h-5 w-5 text-yellow-500" />;
       case 'negative':
         return <TrendingDown className="h-5 w-5 text-red-500" />;
+      case 'recommendation':
+        return <Lightbulb className="h-5 w-5 text-blue-500" />;
       default:
         return <Lightbulb className="h-5 w-5 text-blue-500" />;
     }
@@ -68,9 +79,26 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({ refreshKey }) => {
         return 'bg-yellow-600 text-white';
       case 'negative':
         return 'bg-red-600 text-white';
-      default:
+      case 'recommendation':
         return 'bg-blue-600 text-white';
+      default:
+        return 'bg-gray-600 text-white';
     }
+  };
+
+  const getCategoryBadge = (category?: string) => {
+    if (!category) return null;
+    const categoryColors: { [key: string]: string } = {
+      productivity: 'bg-purple-600 text-white',
+      habits: 'bg-orange-600 text-white',
+      expenses: 'bg-green-600 text-white',
+      overall: 'bg-blue-600 text-white'
+    };
+    return (
+      <Badge className={categoryColors[category] || 'bg-gray-600 text-white'} variant="outline">
+        {category}
+      </Badge>
+    );
   };
 
   if (loading) {
@@ -105,76 +133,60 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({ refreshKey }) => {
             <p className="text-sm text-gray-500">Keep tracking to get personalized insights</p>
           </div>
         ) : (
-          insights.map((insight, index) => (
-            <div
-              key={index}
-              className="p-4 bg-gray-700 rounded-lg space-y-3"
-            >
-              <div className="flex items-start space-x-3">
-                {getInsightIcon(insight.type)}
-                <div className="flex-1">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <h3 className="font-medium text-white">{insight.title}</h3>
-                    <Badge className={getInsightBadgeColor(insight.type)}>
-                      {insight.type}
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-gray-300">{insight.message}</p>
-                </div>
-              </div>
-            </div>
-          ))
-        )}
-
-        {/* Sample insights for demonstration */}
-        {insights.length === 0 && (
           <div className="space-y-4">
-            <div className="p-4 bg-gray-700 rounded-lg space-y-3">
-              <div className="flex items-start space-x-3">
-                <CheckCircle className="h-5 w-5 text-green-500" />
-                <div className="flex-1">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <h3 className="font-medium text-white">Great Start!</h3>
-                    <Badge className="bg-green-600 text-white">positive</Badge>
-                  </div>
-                  <p className="text-sm text-gray-300">
-                    You've been consistent with your habits this week. Keep up the momentum!
-                  </p>
-                </div>
-              </div>
-            </div>
+            {/* Group insights by type */}
+            {['positive', 'warning', 'negative', 'recommendation'].map((insightType) => {
+              const filteredInsights = insights.filter(i => i.type === insightType);
+              if (filteredInsights.length === 0) return null;
 
-            <div className="p-4 bg-gray-700 rounded-lg space-y-3">
-              <div className="flex items-start space-x-3">
-                <TrendingUp className="h-5 w-5 text-blue-500" />
-                <div className="flex-1">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <h3 className="font-medium text-white">Productivity Trend</h3>
-                    <Badge className="bg-blue-600 text-white">insight</Badge>
-                  </div>
-                  <p className="text-sm text-gray-300">
-                    Your most productive hours are between 9-11 AM. Schedule important tasks during this time.
-                  </p>
-                </div>
-              </div>
-            </div>
+              const typeLabels: { [key: string]: string } = {
+                positive: '✅ What\'s Going Well',
+                warning: '⚠️ Areas to Improve',
+                negative: '❌ Needs Attention',
+                recommendation: '💡 Recommendations'
+              };
 
-            <div className="p-4 bg-gray-700 rounded-lg space-y-3">
-              <div className="flex items-start space-x-3">
-                <AlertTriangle className="h-5 w-5 text-yellow-500" />
-                <div className="flex-1">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <h3 className="font-medium text-white">Spending Alert</h3>
-                    <Badge className="bg-yellow-600 text-white">warning</Badge>
-                  </div>
-                  <p className="text-sm text-gray-300">
-                    You've spent 80% of your weekly budget. Consider reducing non-essential expenses.
-                  </p>
+              return (
+                <div key={insightType} className="space-y-3">
+                  <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
+                    {getInsightIcon(insightType)}
+                    <span>{typeLabels[insightType]}</span>
+                  </h3>
+                  {filteredInsights.map((insight, index) => (
+                    <div
+                      key={index}
+                      className={`p-4 rounded-lg border-l-4 ${
+                        insightType === 'positive' 
+                          ? 'bg-green-900/20 border-green-500'
+                          : insightType === 'warning'
+                          ? 'bg-yellow-900/20 border-yellow-500'
+                          : insightType === 'negative'
+                          ? 'bg-red-900/20 border-red-500'
+                          : 'bg-blue-900/20 border-blue-500'
+                      }`}
+                    >
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-2 flex-wrap">
+                            <h4 className="font-medium text-white">{insight.title}</h4>
+                            {insight.category && getCategoryBadge(insight.category)}
+                            {insight.priority && insight.priority >= 8 && (
+                              <Badge className="bg-orange-600 text-white text-xs">
+                                High Priority
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-300 leading-relaxed">{insight.message}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            </div>
+              );
+            })}
           </div>
         )}
+
       </CardContent>
     </Card>
   );

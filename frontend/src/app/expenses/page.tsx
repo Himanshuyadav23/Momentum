@@ -69,7 +69,7 @@ export default function ExpensesPage() {
 
           {/* Middle Column - Expense List */}
           <div className="lg:col-span-1">
-            <ExpenseList />
+            <ExpenseList refreshTrigger={refreshKey} />
           </div>
 
           {/* Right Column - Insights */}

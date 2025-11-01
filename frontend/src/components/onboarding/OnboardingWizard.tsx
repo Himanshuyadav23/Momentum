@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
+import { apiClient } from '@/lib/api';
 import { ChevronLeft, ChevronRight, Check, Plus, X } from 'lucide-react';
 
 const TIME_CATEGORIES = [
@@ -79,11 +80,22 @@ export const OnboardingWizard: React.FC = () => {
 
       await updateUser(updateData);
 
-      // TODO: Create first habit if not skipped
+      // Create first habit if not skipped
       if (!skipHabit && habitName.trim()) {
-        // This would be handled by the habit creation API
-        console.log('Creating first habit:', { habitName, habitDescription, habitFrequency });
+        try {
+          await apiClient.createHabit({
+            name: habitName,
+            description: habitDescription || undefined,
+            frequency: habitFrequency
+          });
+        } catch (error) {
+          console.error('Failed to create first habit:', error);
+          // Don't fail onboarding if habit creation fails
+        }
       }
+
+      // Redirect to dashboard after successful onboarding
+      window.location.href = '/';
     } catch (error) {
       console.error('Onboarding completion error:', error);
     } finally {

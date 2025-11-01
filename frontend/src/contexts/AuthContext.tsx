@@ -62,10 +62,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(d.user);
             // Use backend JWT for subsequent API calls
             apiClient.setToken(d.token);
+          } else {
+            console.error('Login response failed:', response);
+            setUser(null);
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error('Auth state change error:', error);
+          console.error('Error details:', {
+            message: error?.message,
+            stack: error?.stack,
+            response: error?.response
+          });
           setUser(null);
+          // Don't clear Firebase auth, just clear backend user
         }
       } else {
         setUser(null);
@@ -89,9 +98,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const d: any = response.data;
         setUser(d.user);
         apiClient.setToken(d.token);
+      } else {
+        console.error('Login failed:', response);
+        throw new Error(response.message || 'Failed to authenticate with backend');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Google sign in error:', error);
+      // Provide better error message
+      if (error.message?.includes('Failed to connect')) {
+        throw new Error('Backend server is not running. Please start the backend server.');
+      }
       throw error;
     } finally {
       setLoading(false);
@@ -109,9 +125,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const d: any = response.data;
         setUser(d.user);
         apiClient.setToken(d.token);
+      } else {
+        console.error('Login failed:', response);
+        throw new Error(response.message || 'Failed to authenticate with backend');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Email sign in error:', error);
+      // Provide better error message
+      if (error.message?.includes('Failed to connect')) {
+        throw new Error('Backend server is not running. Please start the backend server.');
+      }
       throw error;
     } finally {
       setLoading(false);

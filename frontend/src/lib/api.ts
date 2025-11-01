@@ -189,6 +189,12 @@ class ApiClient {
     return this.request(`/habits/${id}/logs${query ? `?${query}` : ''}`);
   }
 
+  async deleteHabitLog(logId: string) {
+    return this.request(`/habits/logs/${logId}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Expense endpoints
   async getExpenses(params?: { startDate?: string; endDate?: string; category?: string }) {
     const queryParams = new URLSearchParams();
@@ -200,7 +206,7 @@ class ApiClient {
     return this.request(`/expenses${query ? `?${query}` : ''}`);
   }
 
-  async createExpense(data: { amount: number; category: string; description?: string; date?: string }) {
+  async createExpense(data: { amount: number; currency?: string; category: string; description?: string; date?: string }) {
     return this.request('/expenses', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -273,33 +279,38 @@ class ApiClient {
 
   async getWeeklyReport() {
     const res = await this.request('/analytics/weekly');
-    if (res && (res as any).data && (res as any).data.weeklyReport) {
-      const r: any = (res as any).data.weeklyReport;
-      const totalTime = Number(r.totalTime ?? 0);
-      const totalHabits = Number(r.totalHabits ?? 0);
-      const totalExpenses = Number(r.totalExpenses ?? 0);
-      const expenseCategoryBreakdown = r.expenseCategoryBreakdown || {};
-      // Create a shape WeeklyReport.tsx expects
-      const normalized = {
-        success: true,
-        data: {
-          time: {
-            productive: totalTime,
-            wasted: 0,
-            total: totalTime,
-          },
-          habits: {
-            completedLogs: totalHabits,
-            totalHabits: totalHabits,
-            streaks: [],
-          },
-          expenses: {
-            total: totalExpenses,
-            categoryBreakdown: expenseCategoryBreakdown,
-          },
-        },
-      } as ApiResponse;
-      return normalized;
+    // Transform response to match frontend expectations
+    if (res.success && res.data) {
+      const resData = res.data as any;
+      const wr = resData.weeklyReport;
+      if (wr) {
+        return {
+          success: true,
+          data: {
+            // New structured format (preferred)
+            time: wr.time || {
+              total: wr.totalTime || 0,
+              productive: 0,
+              wasted: 0,
+              dailyBreakdown: wr.dailyTimeBreakdown || {},
+              categoryBreakdown: wr.timeCategoryBreakdown || {}
+            },
+            habits: wr.habits || {
+              totalHabits: 0,
+              completedLogs: wr.totalHabits || 0,
+              streaks: [],
+              dailyBreakdown: wr.dailyHabitBreakdown || {}
+            },
+            expenses: wr.expenses || {
+              total: wr.totalExpenses || 0,
+              categoryBreakdown: wr.expenseCategoryBreakdown || {},
+              dailyBreakdown: wr.dailyExpenseBreakdown || {}
+            },
+            // Also include raw data for backwards compatibility
+            ...wr
+          }
+        } as ApiResponse;
+      }
     }
     return res;
   }
@@ -309,13 +320,68 @@ class ApiClient {
     return this.getWeeklyReport();
   }
 
+  async getMonthlyReport() {
+    const res = await this.request('/analytics/monthly');
+    // Transform response to match frontend expectations
+    if (res.success && res.data) {
+      const resData = res.data as any;
+      const mr = resData.monthlyReport;
+      if (mr) {
+        return {
+          success: true,
+          data: {
+            // New structured format (preferred)
+            time: mr.time || {
+              total: mr.totalTime || 0,
+              productive: 0,
+              wasted: 0,
+              dailyBreakdown: mr.dailyTimeBreakdown || {},
+              categoryBreakdown: mr.timeCategoryBreakdown || {}
+            },
+            habits: mr.habits || {
+              totalHabits: 0,
+              completedLogs: mr.totalHabits || 0,
+              streaks: [],
+              dailyBreakdown: mr.dailyHabitBreakdown || {}
+            },
+            expenses: mr.expenses || {
+              total: mr.totalExpenses || 0,
+              categoryBreakdown: mr.expenseCategoryBreakdown || {},
+              dailyBreakdown: mr.dailyExpenseBreakdown || {}
+            },
+            // Also include raw data for backwards compatibility
+            ...mr
+          }
+        } as ApiResponse;
+      }
+    }
+    return res;
+  }
+
   async getInsights() {
     const res = await this.request('/analytics/insights');
-    // Backend returns { data: { insights: { productivity: {...}, expenses: {...}, habits: {...} } } }
-    // Map to array of { type, title, message }
+    // Backend returns { data: { insights: { productivity: {...}, expenses: {...}, habits: {...}, recommendations: [...] } } }
     try {
       const raw = (res as any)?.data?.insights;
       if (!raw) return res;
+      
+      // If backend provides recommendations, use them directly
+      if (raw.recommendations && Array.isArray(raw.recommendations)) {
+        return {
+          success: true,
+          data: {
+            insights: raw.recommendations.map((rec: any) => ({
+              type: rec.type || 'recommendation',
+              title: rec.title || '',
+              message: rec.message || '',
+              category: rec.category || 'overall',
+              priority: rec.priority || 0
+            }))
+          }
+        } as ApiResponse;
+      }
+      
+      // Fallback: Generate basic insights if recommendations not available
       const items: Array<{ type: string; title: string; message: string }> = [];
       const ratio = Number(raw.productivity?.productivityRatio ?? 0);
       items.push({
@@ -334,7 +400,7 @@ class ApiClient {
         items.push({
           type: 'warning',
           title: 'Top expense category',
-          message: `${raw.expenses.topExpenseCategory.category} accounted for ${Math.round(raw.expenses.topExpenseCategory.amount)} spent.`,
+          message: `${raw.expenses.topExpenseCategory.category} accounted for ₹${Math.round(raw.expenses.topExpenseCategory.amount)} spent.`,
         });
       }
       items.push({

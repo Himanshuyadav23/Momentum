@@ -46,12 +46,14 @@ export const CreateHabit: React.FC<CreateHabitProps> = ({ onHabitCreated }) => {
           frequency: 'daily',
           targetCount: 1
         });
+        // Notify parent to refresh habit list
         onHabitCreated?.();
-        alert('Habit created successfully!');
+      } else {
+        throw new Error(response.message || 'Failed to create habit');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to create habit:', error);
-      alert('Failed to create habit');
+      alert(error?.message || 'Failed to create habit');
     } finally {
       setLoading(false);
     }
@@ -125,12 +127,16 @@ export const CreateHabit: React.FC<CreateHabitProps> = ({ onHabitCreated }) => {
               id="targetCount"
               type="number"
               min="1"
-              max="10"
+              max="50"
               value={formData.targetCount}
               onChange={(e) => handleInputChange('targetCount', parseInt(e.target.value) || 1)}
               className="bg-gray-700 border-gray-600 text-white"
               required
             />
+            <p className="text-xs text-gray-400">
+              How many times you want to do this habit {formData.frequency === 'daily' ? 'per day' : 'per week'}. 
+              Streak only counts when target is met.
+            </p>
           </div>
 
           <Button

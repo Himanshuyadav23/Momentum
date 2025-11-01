@@ -4,12 +4,26 @@ import { useAuth } from '@/contexts/AuthContext';
 import { TimerWidget } from '@/components/time/TimerWidget';
 import { TimeEntries } from '@/components/time/TimeEntries';
 import { ManualTimeEntry } from '@/components/time/ManualTimeEntry';
+import { TimeInsights } from '@/components/time/TimeInsights';
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 
 export default function TimePage() {
   const { user, loading } = useAuth();
   const [refreshKey, setRefreshKey] = useState(0);
+  const [insightsData, setInsightsData] = useState<{
+    entries: any[];
+    productiveTime: number;
+    wastedTime: number;
+    totalTime: number;
+    productivityRatio: number;
+  }>({
+    entries: [],
+    productiveTime: 0,
+    wastedTime: 0,
+    totalTime: 0,
+    productivityRatio: 0
+  });
 
   const handleTimerUpdate = () => {
     setRefreshKey(prev => prev + 1);
@@ -61,16 +75,26 @@ export default function TimePage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column */}
-          <div className="space-y-8">
+          <div className="lg:col-span-2 space-y-8">
             <TimerWidget onTimerUpdate={handleTimerUpdate} />
             <ManualTimeEntry onEntryAdded={handleTimerUpdate} />
+            <TimeEntries 
+              refreshTrigger={refreshKey} 
+              onDataUpdate={setInsightsData}
+            />
           </div>
 
-          {/* Right Column */}
+          {/* Right Column - Insights */}
           <div className="space-y-8">
-            <TimeEntries key={refreshKey} />
+            <TimeInsights 
+              entries={insightsData.entries} 
+              productiveTime={insightsData.productiveTime} 
+              wastedTime={insightsData.wastedTime} 
+              totalTime={insightsData.totalTime}
+              productivityRatio={insightsData.productivityRatio}
+            />
           </div>
         </div>
       </main>

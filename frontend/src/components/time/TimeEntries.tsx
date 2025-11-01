@@ -5,10 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { apiClient } from '@/lib/api';
-import { Clock, Calendar, Filter, Plus } from 'lucide-react';
+import { Clock, Calendar, Filter, Plus, TrendingUp, TrendingDown, BarChart3, Download } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { TimeInsights } from './TimeInsights';
 
 interface TimeEntry {
-  _id: string;
+  id: string;
   category: string;
   description: string;
   startTime: string;
@@ -18,7 +20,18 @@ interface TimeEntry {
   isActive: boolean;
 }
 
-export const TimeEntries: React.FC = () => {
+interface TimeEntriesProps {
+  refreshTrigger?: number;
+  onDataUpdate?: (data: {
+    entries: TimeEntry[];
+    productiveTime: number;
+    wastedTime: number;
+    totalTime: number;
+    productivityRatio: number;
+  }) => void;
+}
+
+export const TimeEntries: React.FC<TimeEntriesProps> = ({ refreshTrigger = 0, onDataUpdate }) => {
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'productive' | 'wasted'>('all');
@@ -26,7 +39,7 @@ export const TimeEntries: React.FC = () => {
 
   useEffect(() => {
     fetchTimeEntries();
-  }, [dateRange]);
+  }, [dateRange, refreshTrigger]);
 
   const fetchTimeEntries = async () => {
     try {
@@ -41,11 +54,14 @@ export const TimeEntries: React.FC = () => {
 
       if (response.success && response.data) {
         const d: any = response.data;
-        const list: TimeEntry[] = Array.isArray(d?.entries)
-          ? d.entries
-          : Array.isArray(d)
-            ? d
-            : [];
+        // Backend returns { data: { timeEntries: [...] } }
+        const list: TimeEntry[] = Array.isArray(d?.timeEntries)
+          ? d.timeEntries
+          : Array.isArray(d?.entries)
+            ? d.entries
+            : Array.isArray(d)
+              ? d
+              : [];
         setEntries(list);
       }
     } catch (error) {
@@ -83,20 +99,91 @@ export const TimeEntries: React.FC = () => {
     return date.toLocaleString();
   };
 
-  const filteredEntries = entries.filter(entry => {
-    if (filter === 'all') return true;
-    if (filter === 'productive') return entry.isProductive;
-    if (filter === 'wasted') return !entry.isProductive;
-    return true;
-  });
+  const filteredEntries = entries
+    .filter(entry => {
+      if (filter === 'all') return true;
+      if (filter === 'productive') return entry.isProductive;
+      if (filter === 'wasted') return !entry.isProductive;
+      return true;
+    })
+    .sort((a, b) => {
+      // Active entries first
+      if (a.isActive && !b.isActive) return -1;
+      if (!a.isActive && b.isActive) return 1;
+      // Then by start time (newest first)
+      return new Date(b.startTime).getTime() - new Date(a.startTime).getTime();
+    });
 
-  const totalTime = filteredEntries.reduce((sum, entry) => sum + (entry.duration || 0), 0);
-  const productiveTime = filteredEntries
+  // Only count completed entries (not active ones) in totals
+  const completedEntries = filteredEntries.filter(entry => !entry.isActive && entry.duration !== undefined);
+  const totalTime = completedEntries.reduce((sum, entry) => sum + (entry.duration || 0), 0);
+  const productiveTime = completedEntries
     .filter(entry => entry.isProductive)
     .reduce((sum, entry) => sum + (entry.duration || 0), 0);
-  const wastedTime = filteredEntries
+  const wastedTime = completedEntries
     .filter(entry => !entry.isProductive)
     .reduce((sum, entry) => sum + (entry.duration || 0), 0);
+  
+  // Calculate productivity ratio
+  const productivityRatio = totalTime > 0 ? Math.round((productiveTime / totalTime) * 100) : 0;
+  
+  // Category breakdown (only for completed entries)
+  const categoryBreakdown = completedEntries.reduce((acc, entry) => {
+    const cat = entry.category;
+    if (!acc[cat]) {
+      acc[cat] = { total: 0, productive: 0, wasted: 0, count: 0 };
+    }
+    acc[cat].total += entry.duration || 0;
+    acc[cat].count += 1;
+    if (entry.isProductive) {
+      acc[cat].productive += entry.duration || 0;
+    } else {
+      acc[cat].wasted += entry.duration || 0;
+    }
+    return acc;
+  }, {} as Record<string, { total: number; productive: number; wasted: number; count: number }>);
+
+  const sortedCategories = Object.entries(categoryBreakdown)
+    .sort((a, b) => b[1].total - a[1].total)
+    .slice(0, 5); // Top 5 categories
+
+  // Notify parent component of data updates
+  useEffect(() => {
+    if (onDataUpdate && !loading && entries.length >= 0) {
+      onDataUpdate({
+        entries,
+        productiveTime,
+        wastedTime,
+        totalTime,
+        productivityRatio
+      });
+    }
+  }, [entries, productiveTime, wastedTime, totalTime, productivityRatio, loading, onDataUpdate]);
+
+  const exportData = () => {
+    const csv = [
+      ['Category', 'Description', 'Start Time', 'End Time', 'Duration (minutes)', 'Type', 'Status'].join(','),
+      ...filteredEntries.map(entry => [
+        entry.category,
+        `"${entry.description}"`,
+        new Date(entry.startTime).toLocaleString(),
+        entry.endTime ? new Date(entry.endTime).toLocaleString() : 'N/A',
+        entry.duration || 'N/A',
+        entry.isProductive ? 'Productive' : 'Wasted',
+        entry.isActive ? 'Active' : 'Completed'
+      ].join(','))
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `time-entries-${dateRange}-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  };
 
   if (loading) {
     return (
@@ -114,10 +201,23 @@ export const TimeEntries: React.FC = () => {
   return (
     <Card className="bg-gray-800 border-gray-700">
       <CardHeader>
-        <CardTitle className="flex items-center space-x-2 text-white">
-          <Clock className="h-5 w-5" />
-          <span>Time Entries</span>
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center space-x-2 text-white">
+            <Clock className="h-5 w-5" />
+            <span>Time Entries</span>
+          </CardTitle>
+          {filteredEntries.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportData}
+              className="border-gray-600 text-gray-300 hover:bg-gray-700"
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Filters */}
@@ -153,22 +253,124 @@ export const TimeEntries: React.FC = () => {
               </button>
             ))}
           </div>
+
+          {/* Category Filter */}
+          {sortedCategories.length > 0 && (
+            <div className="flex space-x-1 flex-wrap gap-1">
+              <button
+                onClick={() => setFilter('all')}
+                className={`px-2 py-1 text-xs rounded-md border transition-colors ${
+                  filter === 'all'
+                    ? 'bg-white text-black border-white'
+                    : 'bg-gray-700 text-gray-300 border-gray-600 hover:border-gray-400'
+                }`}
+              >
+                All Categories
+              </button>
+              {sortedCategories.map(([category]) => (
+                <button
+                  key={category}
+                  onClick={() => {
+                    // This would need category filter state, simplified for now
+                  }}
+                  className="px-2 py-1 text-xs rounded-md border bg-gray-700 text-gray-300 border-gray-600 hover:border-gray-400"
+                  title={`Filter by ${category}`}
+                >
+                  {category}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Summary */}
-        <div className="grid grid-cols-3 gap-4 p-4 bg-gray-700 rounded-lg">
-          <div className="text-center">
-            <p className="text-2xl font-bold text-white">{formatDuration(totalTime)}</p>
-            <p className="text-xs text-gray-400">Total Time</p>
+        {/* Summary Stats */}
+        <div className="space-y-4">
+          {/* Main Stats */}
+          <div className="grid grid-cols-3 gap-4 p-4 bg-gray-700 rounded-lg">
+            <div className="text-center">
+              <p className="text-2xl font-bold text-white">{formatDuration(totalTime)}</p>
+              <p className="text-xs text-gray-400">Total Time</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-green-400">{formatDuration(productiveTime)}</p>
+              <p className="text-xs text-gray-400">Productive</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-red-400">{formatDuration(wastedTime)}</p>
+              <p className="text-xs text-gray-400">Wasted</p>
+            </div>
           </div>
-          <div className="text-center">
-            <p className="text-2xl font-bold text-green-400">{formatDuration(productiveTime)}</p>
-            <p className="text-xs text-gray-400">Productive</p>
+
+          {/* Productivity Ratio */}
+          <div className="p-4 bg-gray-700 rounded-lg">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center space-x-2">
+                {productivityRatio >= 70 ? (
+                  <TrendingUp className="h-4 w-4 text-green-400" />
+                ) : productivityRatio >= 50 ? (
+                  <BarChart3 className="h-4 w-4 text-yellow-400" />
+                ) : (
+                  <TrendingDown className="h-4 w-4 text-red-400" />
+                )}
+                <span className="text-sm font-medium text-gray-300">Productivity Ratio</span>
+              </div>
+              <span className={`text-lg font-bold ${
+                productivityRatio >= 70 ? 'text-green-400' : 
+                productivityRatio >= 50 ? 'text-yellow-400' : 'text-red-400'
+              }`}>
+                {productivityRatio}%
+              </span>
+            </div>
+            <Progress 
+              value={productivityRatio} 
+              className="h-2"
+            />
+            <div className="flex justify-between text-xs text-gray-400 mt-1">
+              <span>Productive: {formatDuration(productiveTime)}</span>
+              <span>Wasted: {formatDuration(wastedTime)}</span>
+            </div>
           </div>
-          <div className="text-center">
-            <p className="text-2xl font-bold text-red-400">{formatDuration(wastedTime)}</p>
-            <p className="text-xs text-gray-400">Wasted</p>
-          </div>
+
+          {/* Category Breakdown */}
+          {sortedCategories.length > 0 && (
+            <div className="p-4 bg-gray-700 rounded-lg">
+              <div className="flex items-center space-x-2 mb-3">
+                <BarChart3 className="h-4 w-4 text-gray-300" />
+                <h3 className="text-sm font-medium text-gray-300">Top Categories</h3>
+              </div>
+              <div className="space-y-2">
+                {sortedCategories.map(([category, stats]) => (
+                  <div key={category} className="space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-white font-medium">{category}</span>
+                      <span className="text-gray-400">{formatDuration(stats.total)}</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="flex-1 bg-gray-600 rounded-full h-2 overflow-hidden">
+                        <div className="flex h-full">
+                          {stats.productive > 0 && (
+                            <div 
+                              className="bg-green-500"
+                              style={{ width: `${(stats.productive / stats.total) * 100}%` }}
+                            />
+                          )}
+                          {stats.wasted > 0 && (
+                            <div 
+                              className="bg-red-500"
+                              style={{ width: `${(stats.wasted / stats.total) * 100}%` }}
+                            />
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        {stats.count} {stats.count === 1 ? 'entry' : 'entries'}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Entries List */}
@@ -182,7 +384,7 @@ export const TimeEntries: React.FC = () => {
           ) : (
             filteredEntries.map((entry) => (
               <div
-                key={entry._id}
+                key={entry.id}
                 className="flex items-center justify-between p-4 bg-gray-700 rounded-lg"
               >
                 <div className="flex-1">
@@ -206,12 +408,25 @@ export const TimeEntries: React.FC = () => {
                       <Calendar className="h-3 w-3" />
                       <span>{formatDateTime(entry.startTime)}</span>
                     </span>
-                    {entry.duration && (
+                    {entry.endTime && (
                       <span className="flex items-center space-x-1">
-                        <Clock className="h-3 w-3" />
-                        <span>{formatDuration(entry.duration)}</span>
+                        <span>→</span>
+                        <span>{formatDateTime(entry.endTime)}</span>
                       </span>
                     )}
+                    {entry.isActive ? (
+                      <span className="flex items-center space-x-1 font-semibold text-orange-400 animate-pulse">
+                        <Clock className="h-3 w-3" />
+                        <span>Running...</span>
+                      </span>
+                    ) : entry.duration !== undefined ? (
+                      <span className="flex items-center space-x-1 font-semibold">
+                        <Clock className="h-3 w-3" />
+                        <span className={entry.isProductive ? 'text-green-400' : 'text-red-400'}>
+                          {formatDuration(entry.duration)}
+                        </span>
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               </div>

@@ -246,7 +246,7 @@ const getPeriodReport = async (req: Request, res: Response, isMonthly: boolean =
       }
     });
   } catch (error) {
-    console.error('Get weekly report error:', error);
+    console.error(`Get ${isMonthly ? 'monthly' : 'weekly'} report error:`, error);
     const err: any = error;
     const details: string | undefined = err?.details || err?.message;
     const code = err?.code;
@@ -287,14 +287,6 @@ const getPeriodReport = async (req: Request, res: Response, isMonthly: boolean =
       success: false,
       message: `Failed to get ${isMonthly ? 'monthly' : 'weekly'} report`,
       error: details || err?.message
-    });
-  } catch (error) {
-    console.error(`Get ${isMonthly ? 'monthly' : 'weekly'} report error:`, error);
-    const err: any = error;
-    return res.status(500).json({
-      success: false,
-      message: `Failed to get ${isMonthly ? 'monthly' : 'weekly'} report`,
-      error: err?.message
     });
   }
 };
