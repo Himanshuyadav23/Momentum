@@ -35,7 +35,7 @@ export class Habit {
       updatedAt: now
     };
 
-    await habitsCollection.doc(id).set({
+    await habitsCollection().doc(id).set({
       ...habit,
       createdAt: firestoreHelpers.dateToTimestamp(now),
       updatedAt: firestoreHelpers.dateToTimestamp(now)
@@ -45,7 +45,7 @@ export class Habit {
   }
 
   static async findById(id: string): Promise<IHabit | null> {
-    const doc = await habitsCollection.doc(id).get();
+    const doc = await habitsCollection().doc(id).get();
     
     if (!doc.exists) {
       return null;
@@ -61,7 +61,7 @@ export class Habit {
   }
 
   static async findByUserId(userId: string, activeOnly: boolean = true): Promise<IHabit[]> {
-    let query = habitsCollection.where('userId', '==', userId);
+    let query = habitsCollection().where('userId', '==', userId);
 
     if (activeOnly) {
       query = query.where('isActive', '==', true);
@@ -85,7 +85,7 @@ export class Habit {
   static async update(id: string, updateData: Partial<Omit<IHabit, 'id' | 'createdAt'>>): Promise<IHabit | null> {
     const now = new Date();
     
-    await habitsCollection.doc(id).update({
+    await habitsCollection().doc(id).update({
       ...updateData,
       updatedAt: firestoreHelpers.dateToTimestamp(now)
     });
@@ -95,7 +95,7 @@ export class Habit {
 
   static async delete(id: string): Promise<boolean> {
     try {
-      await habitsCollection.doc(id).delete();
+      await habitsCollection().doc(id).delete();
       return true;
     } catch (error) {
       console.error('Error deleting habit:', error);
@@ -115,7 +115,7 @@ export class HabitLog {
       createdAt: now
     };
 
-    await habitLogsCollection.doc(id).set({
+    await habitLogsCollection().doc(id).set({
       ...habitLog,
       completedAt: firestoreHelpers.dateToTimestamp(habitLog.completedAt),
       createdAt: firestoreHelpers.dateToTimestamp(now)
@@ -129,7 +129,7 @@ export class HabitLog {
     endDate?: Date;
     limit?: number;
   }): Promise<IHabitLog[]> {
-    let query = habitLogsCollection.where('habitId', '==', habitId);
+    let query = habitLogsCollection().where('habitId', '==', habitId);
 
     if (options?.startDate) {
       query = query.where('completedAt', '>=', firestoreHelpers.dateToTimestamp(options.startDate));
@@ -163,7 +163,7 @@ export class HabitLog {
     endDate?: Date;
     limit?: number;
   }): Promise<IHabitLog[]> {
-    let query = habitLogsCollection.where('userId', '==', userId);
+    let query = habitLogsCollection().where('userId', '==', userId);
 
     if (options?.startDate) {
       query = query.where('completedAt', '>=', firestoreHelpers.dateToTimestamp(options.startDate));
@@ -173,15 +173,16 @@ export class HabitLog {
       query = query.where('completedAt', '<=', firestoreHelpers.dateToTimestamp(options.endDate));
     }
 
-    query = query.orderBy('completedAt', 'desc');
+    // Use 'asc' to match the index direction (userId ASC, completedAt ASC, __name__ ASC)
+    // For date range queries, we'll fetch all results and apply limit after reversing
+    // This ensures we get the newest items when limit is specified
+    query = query.orderBy('completedAt', 'asc');
 
-    if (options?.limit) {
-      query = query.limit(options.limit);
-    }
-
+    // Don't apply limit in query - we need all results to reverse them properly
+    // We'll limit after reversing to get the newest items
     const snapshot = await query.get();
     
-    return snapshot.docs.map(doc => {
+    const results = snapshot.docs.map(doc => {
       const data = doc.data();
       return {
         id: doc.id,
@@ -190,11 +191,43 @@ export class HabitLog {
         createdAt: firestoreHelpers.timestampToDate(data.createdAt)
       } as IHabitLog;
     });
+    
+    // Reverse to get descending order (newest first) since we queried ascending to match index
+    const reversed = results.reverse();
+    
+    // Apply limit after reversing to get the newest N items
+    if (options?.limit && options.limit > 0) {
+      return reversed.slice(0, options.limit);
+    }
+    
+    return reversed;
+  }
+
+  static async findById(id: string): Promise<IHabitLog | null> {
+    try {
+      const doc = await habitLogsCollection().doc(id).get();
+      if (!doc.exists) {
+        return null;
+      }
+      const data = doc.data();
+      if (!data) {
+        return null;
+      }
+      return {
+        id: doc.id,
+        ...data,
+        completedAt: firestoreHelpers.timestampToDate(data.completedAt),
+        createdAt: firestoreHelpers.timestampToDate(data.createdAt)
+      } as IHabitLog;
+    } catch (error) {
+      console.error('Error finding habit log:', error);
+      return null;
+    }
   }
 
   static async delete(id: string): Promise<boolean> {
     try {
-      await habitLogsCollection.doc(id).delete();
+      await habitLogsCollection().doc(id).delete();
       return true;
     } catch (error) {
       console.error('Error deleting habit log:', error);

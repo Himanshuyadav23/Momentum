@@ -26,7 +26,7 @@ export class TimeEntry {
       updatedAt: now
     };
 
-    await timeEntriesCollection.doc(id).set({
+    await timeEntriesCollection().doc(id).set({
       ...timeEntry,
       startTime: firestoreHelpers.dateToTimestamp(timeEntry.startTime),
       endTime: timeEntry.endTime ? firestoreHelpers.dateToTimestamp(timeEntry.endTime) : null,
@@ -38,7 +38,7 @@ export class TimeEntry {
   }
 
   static async findById(id: string): Promise<ITimeEntry | null> {
-    const doc = await timeEntriesCollection.doc(id).get();
+    const doc = await timeEntriesCollection().doc(id).get();
     
     if (!doc.exists) {
       return null;
@@ -61,7 +61,7 @@ export class TimeEntry {
     category?: string;
     limit?: number;
   }): Promise<ITimeEntry[]> {
-    let query = timeEntriesCollection.where('userId', '==', userId);
+    let query = timeEntriesCollection().where('userId', '==', userId);
 
     if (options?.startDate) {
       query = query.where('startTime', '>=', firestoreHelpers.dateToTimestamp(options.startDate));
@@ -97,7 +97,7 @@ export class TimeEntry {
   }
 
   static async findActiveByUserId(userId: string): Promise<ITimeEntry | null> {
-    const snapshot = await timeEntriesCollection
+    const snapshot = await timeEntriesCollection()
       .where('userId', '==', userId)
       .where('isActive', '==', true)
       .limit(1)
@@ -135,14 +135,14 @@ export class TimeEntry {
       updateFields.endTime = firestoreHelpers.dateToTimestamp(updateData.endTime);
     }
 
-    await timeEntriesCollection.doc(id).update(updateFields);
+    await timeEntriesCollection().doc(id).update(updateFields);
 
     return this.findById(id);
   }
 
   static async delete(id: string): Promise<boolean> {
     try {
-      await timeEntriesCollection.doc(id).delete();
+      await timeEntriesCollection().doc(id).delete();
       return true;
     } catch (error) {
       console.error('Error deleting time entry:', error);
@@ -151,7 +151,7 @@ export class TimeEntry {
   }
 
   static async stopAllActiveByUserId(userId: string): Promise<void> {
-    const snapshot = await timeEntriesCollection
+    const snapshot = await timeEntriesCollection()
       .where('userId', '==', userId)
       .where('isActive', '==', true)
       .get();
@@ -159,7 +159,7 @@ export class TimeEntry {
     const batch = firestoreHelpers.batch();
     const now = new Date();
 
-    snapshot.docs.forEach(doc => {
+    snapshot.docs.forEach((doc: any) => {
       batch.update(doc.ref, {
         isActive: false,
         endTime: firestoreHelpers.dateToTimestamp(now),

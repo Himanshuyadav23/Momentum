@@ -6,10 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { apiClient } from '@/lib/api';
-import { Target, Plus, CheckCircle, Calendar, Flame } from 'lucide-react';
+import { Target, Plus, CheckCircle, Calendar, Flame, X, RotateCcw } from 'lucide-react';
 
 interface Habit {
-  _id: string;
+  id: string;
   name: string;
   description?: string;
   frequency: 'daily' | 'weekly';
@@ -20,9 +20,16 @@ interface Habit {
   createdAt: string;
 }
 
+interface HabitWithCompletion extends Habit {
+  completedToday?: boolean;
+  todayLogId?: string;
+  recentCompletions?: number; // Completions in last 7 days
+}
+
 export const HabitList: React.FC = () => {
-  const [habits, setHabits] = useState<Habit[]>([]);
+  const [habits, setHabits] = useState<HabitWithCompletion[]>([]);
   const [loading, setLoading] = useState(true);
+  const [completingHabitId, setCompletingHabitId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchHabits();
@@ -39,7 +46,51 @@ export const HabitList: React.FC = () => {
           : Array.isArray(d)
             ? d
             : [];
-        setHabits(list);
+        
+        // Check which habits are completed today
+        const habitsWithCompletion = await Promise.all(
+          list.map(async (habit) => {
+            const today = new Date();
+            const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+            const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+            
+            try {
+              const logsResponse = await apiClient.getHabitLogs(habit.id, {
+                startDate: startOfDay.toISOString(),
+                endDate: endOfDay.toISOString()
+              });
+              
+              const todayLogs = logsResponse.success && logsResponse.data?.habitLogs 
+                ? logsResponse.data.habitLogs 
+                : [];
+              
+              // Get last 7 days completions for visualization
+              const weekAgo = new Date(today);
+              weekAgo.setDate(weekAgo.getDate() - 7);
+              
+              const weekLogsResponse = await apiClient.getHabitLogs(habit.id, {
+                startDate: weekAgo.toISOString(),
+                endDate: endOfDay.toISOString()
+              });
+              
+              const weekLogs = weekLogsResponse.success && weekLogsResponse.data?.habitLogs 
+                ? weekLogsResponse.data.habitLogs 
+                : [];
+              
+              return {
+                ...habit,
+                completedToday: todayLogs.length > 0,
+                todayLogId: todayLogs.length > 0 ? todayLogs[0].id : undefined,
+                recentCompletions: weekLogs.length
+              } as HabitWithCompletion;
+            } catch (error) {
+              console.error(`Error checking completion for habit ${habit.id}:`, error);
+              return { ...habit, completedToday: false, recentCompletions: 0 } as HabitWithCompletion;
+            }
+          })
+        );
+        
+        setHabits(habitsWithCompletion);
       }
     } catch (error) {
       console.error('Failed to fetch habits:', error);
@@ -49,15 +100,40 @@ export const HabitList: React.FC = () => {
   };
 
   const completeHabit = async (habitId: string) => {
+    const habit = habits.find(h => h.id === habitId);
+    if (habit?.completedToday) {
+      alert('This habit is already completed today!');
+      return;
+    }
+    
     try {
+      setCompletingHabitId(habitId);
       const response = await apiClient.logHabit(habitId);
       if (response.success) {
         // Refresh habits to show updated streak
-        fetchHabits();
+        await fetchHabits();
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to complete habit:', error);
-      alert('Failed to complete habit');
+      alert(error.message || 'Failed to complete habit');
+    } finally {
+      setCompletingHabitId(null);
+    }
+  };
+  
+  const undoCompletion = async (habitId: string, logId: string) => {
+    if (!confirm('Undo today\'s completion? This will remove the completion log.')) {
+      return;
+    }
+    
+    try {
+      const response = await apiClient.deleteHabitLog(logId);
+      if (response.success) {
+        await fetchHabits();
+      }
+    } catch (error: any) {
+      console.error('Failed to undo completion:', error);
+      alert(error.message || 'Failed to undo completion');
     }
   };
 
@@ -111,8 +187,12 @@ export const HabitList: React.FC = () => {
         ) : (
           habits.map((habit) => (
             <div
-              key={habit._id}
-              className="p-4 bg-gray-700 rounded-lg space-y-3"
+              key={habit.id}
+              className={`p-4 rounded-lg space-y-3 transition-all ${
+                habit.completedToday 
+                  ? 'bg-green-900/30 border-2 border-green-600' 
+                  : 'bg-gray-700'
+              }`}
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1">
@@ -124,18 +204,56 @@ export const HabitList: React.FC = () => {
                     >
                       {habit.frequency}
                     </Badge>
+                    {habit.completedToday && (
+                      <Badge className="bg-green-600 text-white">
+                        ✓ Done Today
+                      </Badge>
+                    )}
                   </div>
                   {habit.description && (
                     <p className="text-sm text-gray-300 mb-2">{habit.description}</p>
                   )}
+                  
+                  {/* Visual Calendar - Last 7 days */}
+                  <div className="flex items-center space-x-1 mt-2">
+                    {Array.from({ length: 7 }, (_, i) => {
+                      const date = new Date();
+                      date.setDate(date.getDate() - (6 - i));
+                      const isToday = date.toDateString() === new Date().toDateString();
+                      const dateKey = date.toISOString().split('T')[0];
+                      
+                      // Check if this date was completed (simplified - in full implementation would check logs)
+                      // For now, we show completion based on today's status
+                      const isCompleted = isToday && habit.completedToday;
+                      
+                      return (
+                        <div
+                          key={i}
+                          className={`w-6 h-6 rounded text-xs flex items-center justify-center border transition-colors ${
+                            isCompleted
+                              ? 'bg-green-600 border-green-400 text-white'
+                              : isToday
+                              ? 'bg-gray-600 border-gray-500 text-gray-300'
+                              : 'bg-gray-800 border-gray-700 text-gray-600'
+                          }`}
+                          title={`${date.toLocaleDateString()}${isCompleted ? ' - Completed' : ''}`}
+                        >
+                          {isToday ? 'T' : date.getDate()}
+                        </div>
+                      );
+                    })}
+                    <span className="text-xs text-gray-400 ml-2">
+                      {habit.recentCompletions || 0}/7 days this week
+                    </span>
+                  </div>
                 </div>
                 <Button
-                  onClick={() => deleteHabit(habit._id)}
+                  onClick={() => deleteHabit(habit.id)}
                   variant="outline"
                   size="sm"
-                  className="border-gray-600 text-gray-400 hover:bg-gray-600 hover:text-white"
+                  className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white"
                 >
-                  Delete
+                  <X className="w-4 h-4" />
                 </Button>
               </div>
 
@@ -161,13 +279,34 @@ export const HabitList: React.FC = () => {
                 </span>
               </div>
 
-              <Button
-                onClick={() => completeHabit(habit._id)}
-                className="w-full bg-white text-black hover:bg-gray-100"
-              >
-                <CheckCircle className="w-4 h-4 mr-2" />
-                Mark Complete
-              </Button>
+              {habit.completedToday ? (
+                <Button
+                  onClick={() => undoCompletion(habit.id, habit.todayLogId!)}
+                  className="w-full bg-gray-600 text-white hover:bg-gray-500"
+                  disabled={!habit.todayLogId}
+                >
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  Undo Completion
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => completeHabit(habit.id)}
+                  className="w-full bg-green-600 text-white hover:bg-green-500"
+                  disabled={completingHabitId === habit.id}
+                >
+                  {completingHabitId === habit.id ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Completing...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Mark Complete
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
           ))
         )}

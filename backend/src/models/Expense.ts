@@ -24,7 +24,7 @@ export class Expense {
       updatedAt: now
     };
 
-    await expensesCollection.doc(id).set({
+    await expensesCollection().doc(id).set({
       ...expense,
       date: firestoreHelpers.dateToTimestamp(expense.date),
       createdAt: firestoreHelpers.dateToTimestamp(now),
@@ -35,7 +35,7 @@ export class Expense {
   }
 
   static async findById(id: string): Promise<IExpense | null> {
-    const doc = await expensesCollection.doc(id).get();
+    const doc = await expensesCollection().doc(id).get();
     
     if (!doc.exists) {
       return null;
@@ -57,7 +57,7 @@ export class Expense {
     category?: string;
     limit?: number;
   }): Promise<IExpense[]> {
-    let query = expensesCollection.where('userId', '==', userId);
+    let query = expensesCollection().where('userId', '==', userId);
 
     if (options?.startDate) {
       query = query.where('date', '>=', firestoreHelpers.dateToTimestamp(options.startDate));
@@ -102,14 +102,14 @@ export class Expense {
       updateFields.date = firestoreHelpers.dateToTimestamp(updateData.date);
     }
 
-    await expensesCollection.doc(id).update(updateFields);
+    await expensesCollection().doc(id).update(updateFields);
 
     return this.findById(id);
   }
 
   static async delete(id: string): Promise<boolean> {
     try {
-      await expensesCollection.doc(id).delete();
+      await expensesCollection().doc(id).delete();
       return true;
     } catch (error) {
       console.error('Error deleting expense:', error);

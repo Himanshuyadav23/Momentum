@@ -14,8 +14,32 @@ export const errorHandler = (
   let error = { ...err };
   error.message = err.message;
 
-  // Log error
-  console.error('Error:', err);
+  // Log error with full details
+  console.error('🚨 Error Handler:', {
+    message: err.message,
+    name: err.name,
+    stack: err.stack,
+    path: req.path,
+    method: req.method
+  });
+
+  // Firestore errors
+  if ((err as any).code === 9 || (err as any).code === 'FAILED_PRECONDITION') {
+    const message = 'Database index required. Please create the required Firestore index.';
+    error = { message, statusCode: 503 } as AppError;
+  }
+
+  // Firestore permission errors
+  if ((err as any).code === 7 || (err as any).code === 'PERMISSION_DENIED') {
+    const message = 'Database permission denied. Please check your Firebase configuration.';
+    error = { message, statusCode: 403 } as AppError;
+  }
+
+  // Firestore not found
+  if ((err as any).code === 5 || (err as any).code === 'NOT_FOUND') {
+    const message = 'Resource not found';
+    error = { message, statusCode: 404 } as AppError;
+  }
 
   // Mongoose bad ObjectId
   if (err.name === 'CastError') {
@@ -46,11 +70,30 @@ export const errorHandler = (
     error = { message, statusCode: 401 } as AppError;
   }
 
-  res.status(error.statusCode || 500).json({
+  // Firebase not initialized
+  if (err.message?.includes('Firebase Firestore not initialized')) {
+    error = { 
+      message: 'Database not available. Please check server logs.', 
+      statusCode: 503 
+    } as AppError;
+  }
+
+  // Don't expose stack traces in production
+  const response: any = {
     success: false,
-    error: error.message || 'Server Error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-  });
+    error: error.message || 'Server Error'
+  };
+
+  if (process.env.NODE_ENV === 'development') {
+    response.stack = err.stack;
+    response.details = {
+      name: err.name,
+      code: (err as any).code,
+      path: req.path
+    };
+  }
+
+  res.status(error.statusCode || 500).json(response);
 };
 
 

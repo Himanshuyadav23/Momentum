@@ -52,10 +52,19 @@ export const getDashboardData = async (req: Request, res: Response) => {
     console.error('Get dashboard data error:', error);
     const err: any = error;
     const details: string | undefined = err?.details || err?.message;
+    const code = err?.code;
+    
+    // Log full error details for debugging
+    console.error('Error code:', code);
+    console.error('Error details:', details);
+    
     const needsIndex = typeof details === 'string' && details.includes('requires an index');
-    if (needsIndex) {
-      const match = details.match(/https:\/\/console\.firebase\.google\.com[^\s"']+/);
+    if (needsIndex || code === 9) {
+      const match = details?.match(/https:\/\/console\.firebase\.google\.com[^\s"']+/);
       const indexUrl = match ? match[0] : undefined;
+      
+      console.warn('⚠️ Firestore index error detected. If indexes are enabled, try restarting the backend server.');
+      
       return res.status(200).json({
         success: true,
         data: {
@@ -67,13 +76,14 @@ export const getDashboardData = async (req: Request, res: Response) => {
             activeTimer: null
           }
         },
-        message: 'Missing Firestore index; returning empty dashboard data.',
-        error: indexUrl ? `Create index: ${indexUrl}` : 'Create the required Firestore composite index.'
+        message: 'Firestore index required. If indexes are enabled, try restarting the backend server.',
+        error: indexUrl ? `Index URL: ${indexUrl}` : 'Create the required Firestore composite index for habitLogs collection.'
       });
     }
     return res.status(500).json({
       success: false,
-      message: 'Failed to get dashboard data'
+      message: 'Failed to get dashboard data',
+      error: details || err?.message
     });
   }
 };
@@ -171,10 +181,18 @@ export const getWeeklyReport = async (req: Request, res: Response) => {
     console.error('Get weekly report error:', error);
     const err: any = error;
     const details: string | undefined = err?.details || err?.message;
+    const code = err?.code;
+    
+    console.error('Error code:', code);
+    console.error('Error details:', details);
+    
     const needsIndex = typeof details === 'string' && details.includes('requires an index');
-    if (needsIndex) {
-      const match = details.match(/https:\/\/console\.firebase\.google\.com[^\s"']+/);
+    if (needsIndex || code === 9) {
+      const match = details?.match(/https:\/\/console\.firebase\.google\.com[^\s"']+/);
       const indexUrl = match ? match[0] : undefined;
+      
+      console.warn('⚠️ Firestore index error detected. If indexes are enabled, try restarting the backend server.');
+      
       return res.status(200).json({
         success: true,
         data: {
@@ -191,13 +209,14 @@ export const getWeeklyReport = async (req: Request, res: Response) => {
             totalExpenses: 0
           }
         },
-        message: 'Missing Firestore index; returning empty weekly report.',
-        error: indexUrl ? `Create index: ${indexUrl}` : 'Create the required Firestore composite index.'
+        message: 'Firestore index required. If indexes are enabled, try restarting the backend server.',
+        error: indexUrl ? `Index URL: ${indexUrl}` : 'Create the required Firestore composite index.'
       });
     }
     return res.status(500).json({
       success: false,
-      message: 'Failed to get weekly report'
+      message: 'Failed to get weekly report',
+      error: details || err?.message
     });
   }
 };
@@ -293,9 +312,45 @@ export const getInsights = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Get insights error:', error);
+    const err: any = error;
+    const details: string | undefined = err?.details || err?.message;
+    const code = err?.code;
+    
+    console.error('Error code:', code);
+    console.error('Error details:', details);
+    
+    const needsIndex = typeof details === 'string' && details.includes('requires an index');
+    if (needsIndex || code === 9) {
+      console.warn('⚠️ Firestore index error detected. If indexes are enabled, try restarting the backend server.');
+      return res.status(200).json({
+        success: true,
+        data: {
+          insights: {
+            productivity: {
+              totalProductiveTime: 0,
+              totalWastedTime: 0,
+              productivityRatio: 0,
+              averageDailyTime: 0,
+              mostProductiveCategory: null
+            },
+            expenses: {
+              averageDailyExpenses: 0,
+              topExpenseCategory: null,
+              totalExpenses: 0
+            },
+            habits: {
+              totalHabitCompletions: 0,
+              averageDailyHabits: 0
+            }
+          }
+        },
+        message: 'Firestore index required. If indexes are enabled, try restarting the backend server.'
+      });
+    }
     return res.status(500).json({
       success: false,
-      message: 'Failed to get insights'
+      message: 'Failed to get insights',
+      error: details || err?.message
     });
   }
 };

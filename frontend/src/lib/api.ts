@@ -47,14 +47,28 @@ class ApiClient {
 
     try {
       const response = await fetch(url, config);
-      const data = await response.json();
-
+      
+      // Handle network errors or non-json responses
       if (!response.ok) {
-        throw new Error(data.message || 'Request failed');
+        let errorMessage = `Request failed with status ${response.status}`;
+        try {
+          const data = await response.json();
+          errorMessage = data.message || errorMessage;
+        } catch {
+          // Response might not be JSON
+          errorMessage = await response.text() || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
 
+      const data = await response.json();
       return data;
-    } catch (error) {
+    } catch (error: any) {
+      // Handle network/fetch errors
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        console.error('API request failed - Network error. Is the backend server running?', error);
+        throw new Error('Failed to connect to server. Please check if the backend is running.');
+      }
       console.error('API request failed:', error);
       throw error;
     }

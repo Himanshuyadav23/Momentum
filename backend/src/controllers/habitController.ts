@@ -131,6 +131,23 @@ export const logHabit = async (req: Request, res: Response) => {
       });
     }
 
+    // Check if already completed today
+    const today = new Date();
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+
+    const todayLogs = await HabitLog.findByHabitId(habitId, {
+      startDate: startOfDay,
+      endDate: endOfDay
+    });
+
+    if (todayLogs.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'This habit is already completed today'
+      });
+    }
+
     const habitLog = await HabitLog.create({
       habitId,
       userId,
@@ -138,25 +155,44 @@ export const logHabit = async (req: Request, res: Response) => {
       notes
     });
 
-    // Update habit streak (simplified logic)
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    const recentLogs = await HabitLog.findByHabitId(habitId, {
-      startDate: yesterday,
-      endDate: today,
-      limit: 2
+    // Improved streak calculation
+    // Get all logs ordered by date (newest first)
+    const allLogs = await HabitLog.findByHabitId(habitId, {
+      limit: 100 // Get last 100 logs for streak calculation
     });
 
-    let newStreak = habit.currentStreak;
-    if (recentLogs.length > 0) {
-      newStreak += 1;
+    let newStreak = 0;
+    let longestStreak = habit.longestStreak;
+    
+    if (allLogs.length > 0) {
+      // Sort by date descending (newest first)
+      allLogs.sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime());
+      
+      // Calculate current streak
+      let consecutiveDays = 1;
+      let checkDate = new Date(allLogs[0].completedAt);
+      checkDate.setHours(0, 0, 0, 0);
+      
+      for (let i = 1; i < allLogs.length; i++) {
+        const logDate = new Date(allLogs[i].completedAt);
+        logDate.setHours(0, 0, 0, 0);
+        
+        const daysDiff = Math.floor((checkDate.getTime() - logDate.getTime()) / (1000 * 60 * 60 * 24));
+        
+        if (daysDiff === 1) {
+          consecutiveDays++;
+          checkDate = logDate;
+        } else if (daysDiff > 1) {
+          break; // Gap in streak
+        }
+      }
+      
+      newStreak = consecutiveDays;
+      longestStreak = Math.max(longestStreak, newStreak);
     } else {
       newStreak = 1;
+      longestStreak = Math.max(longestStreak, 1);
     }
-
-    const longestStreak = Math.max(habit.longestStreak, newStreak);
 
     await Habit.update(habitId, {
       currentStreak: newStreak,
@@ -216,15 +252,74 @@ export const deleteHabitLog = async (req: Request, res: Response) => {
     const userId = (req as any).user.id;
     const { logId } = req.params;
 
-    const habitLog = await HabitLog.findByHabitId('', { limit: 1 }); // This needs to be fixed
-    // For now, we'll implement a simpler approach
+    // Get the log to find habitId and verify ownership
+    const habitLog = await HabitLog.findById(logId);
+    
+    if (!habitLog) {
+      return res.status(404).json({
+        success: false,
+        message: 'Habit log not found'
+      });
+    }
 
+    if (habitLog.userId !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to delete this log'
+      });
+    }
+
+    const habitId = habitLog.habitId;
+
+    // Delete the log
     const deleted = await HabitLog.delete(logId);
 
     if (!deleted) {
       return res.status(500).json({
         success: false,
         message: 'Failed to delete habit log'
+      });
+    }
+
+    // Recalculate streak for the habit
+    const habit = await Habit.findById(habitId);
+    if (habit) {
+      const allLogs = await HabitLog.findByHabitId(habitId, {
+        limit: 100
+      });
+
+      let newStreak = 0;
+      let longestStreak = habit.longestStreak;
+      
+      if (allLogs.length > 0) {
+        allLogs.sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime());
+        
+        let consecutiveDays = 1;
+        let checkDate = new Date(allLogs[0].completedAt);
+        checkDate.setHours(0, 0, 0, 0);
+        
+        for (let i = 1; i < allLogs.length; i++) {
+          const logDate = new Date(allLogs[i].completedAt);
+          logDate.setHours(0, 0, 0, 0);
+          
+          const daysDiff = Math.floor((checkDate.getTime() - logDate.getTime()) / (1000 * 60 * 60 * 24));
+          
+          if (daysDiff === 1) {
+            consecutiveDays++;
+            checkDate = logDate;
+          } else if (daysDiff > 1) {
+            break;
+          }
+        }
+        
+        newStreak = consecutiveDays;
+      } else {
+        newStreak = 0;
+      }
+
+      await Habit.update(habitId, {
+        currentStreak: newStreak,
+        longestStreak
       });
     }
 

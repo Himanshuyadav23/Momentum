@@ -1,13 +1,25 @@
 import admin from 'firebase-admin';
 
+let db: admin.firestore.Firestore | null = null;
+let firebaseInitialized = false;
+
 // Initialize Firebase Admin SDK
 const initializeFirebase = () => {
-  if (!admin.apps.length) {
-    // Check if we have the required environment variables
-    if (!process.env.FIREBASE_PROJECT_ID) {
-      console.error('❌ FIREBASE_PROJECT_ID is not set. Please configure backend/.env before starting the server.');
-      throw new Error('Missing FIREBASE_PROJECT_ID');
-    } else {
+  try {
+    if (!admin.apps.length) {
+      console.log('🔧 Attempting to initialize Firebase Admin SDK...');
+      console.log('🔧 Checking environment variables...');
+      
+      // Check if we have the required environment variables
+      if (!process.env.FIREBASE_PROJECT_ID) {
+        console.warn('⚠️ FIREBASE_PROJECT_ID is not set.');
+        console.warn('   Available env vars:', Object.keys(process.env).filter(k => k.includes('FIREBASE')).join(', ') || 'NONE');
+        console.warn('   Please configure backend/.env with Firebase credentials.');
+        return false;
+      }
+      
+      console.log(`✅ FIREBASE_PROJECT_ID: ${process.env.FIREBASE_PROJECT_ID}`);
+      
       const serviceAccount = {
         type: "service_account",
         project_id: process.env.FIREBASE_PROJECT_ID,
@@ -15,39 +27,92 @@ const initializeFirebase = () => {
         private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
         client_email: process.env.FIREBASE_CLIENT_EMAIL,
         client_id: process.env.FIREBASE_CLIENT_ID,
-        auth_uri: process.env.FIREBASE_AUTH_URI,
-        token_uri: process.env.FIREBASE_TOKEN_URI,
+        auth_uri: process.env.FIREBASE_AUTH_URI || "https://accounts.google.com/o/oauth2/auth",
+        token_uri: process.env.FIREBASE_TOKEN_URI || "https://oauth2.googleapis.com/token",
       };
 
+      console.log(`🔧 Private key: ${serviceAccount.private_key ? 'SET (' + serviceAccount.private_key.substring(0, 20) + '...)' : 'NOT SET'}`);
+      console.log(`🔧 Client email: ${serviceAccount.client_email || 'NOT SET'}`);
+
+      // Validate required fields
+      if (!serviceAccount.private_key || !serviceAccount.client_email) {
+        console.error('❌ Firebase credentials incomplete.');
+        console.error('   Missing:', {
+          private_key: !serviceAccount.private_key,
+          client_email: !serviceAccount.client_email
+        });
+        return false;
+      }
+
+      console.log('🔧 Initializing Firebase Admin SDK...');
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount as admin.ServiceAccount),
         databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}-default-rtdb.firebaseio.com/`
       });
-    }
 
-    console.log('✅ Firebase Admin SDK initialized');
+      db = admin.firestore();
+      firebaseInitialized = true;
+      console.log('✅ Firebase Admin SDK initialized successfully!');
+      return true;
+    } else {
+      console.log('✅ Firebase Admin SDK already initialized');
+      db = admin.firestore();
+      firebaseInitialized = true;
+      return true;
+    }
+  } catch (error: any) {
+    console.error('❌ Failed to initialize Firebase:');
+    console.error('   Error message:', error.message);
+    console.error('   Error code:', error.code);
+    console.error('   Stack:', error.stack);
+    console.warn('⚠️ Server will continue but database features will be unavailable.');
+    return false;
   }
 };
 
-// Initialize Firebase on module load
-initializeFirebase();
+// Initialize Firebase on module load - but don't crash if it fails
+// Also allow manual re-initialization
+const initResult = initializeFirebase();
+if (!initResult) {
+  console.warn('⚠️ Firebase initialization failed on startup. Will retry on first database access.');
+}
 
-const db = admin.firestore();
+// Export function to manually retry initialization
+export const retryFirebaseInit = () => {
+  if (!firebaseInitialized) {
+    console.log('🔄 Retrying Firebase initialization...');
+    return initializeFirebase();
+  }
+  return true;
+};
+
+// Export with null checks and retry logic
+const getDb = () => {
+  if (!db) {
+    // Try to initialize again - maybe .env was loaded after module import
+    console.log('⚠️ Firebase not initialized. Attempting to initialize...');
+    const retried = initializeFirebase();
+    if (!retried || !db) {
+      throw new Error('Firebase Firestore not initialized. Please check your .env configuration in backend/.env');
+    }
+  }
+  return db;
+};
 
 // User Collection
-export const usersCollection = db.collection('users');
+export const usersCollection = () => getDb().collection('users');
 
 // Time Entries Collection
-export const timeEntriesCollection = db.collection('timeEntries');
+export const timeEntriesCollection = () => getDb().collection('timeEntries');
 
 // Habits Collection
-export const habitsCollection = db.collection('habits');
+export const habitsCollection = () => getDb().collection('habits');
 
 // Habit Logs Collection
-export const habitLogsCollection = db.collection('habitLogs');
+export const habitLogsCollection = () => getDb().collection('habitLogs');
 
 // Expenses Collection
-export const expensesCollection = db.collection('expenses');
+export const expensesCollection = () => getDb().collection('expenses');
 
 // Helper functions for Firestore operations
 export const firestoreHelpers = {
@@ -66,15 +131,16 @@ export const firestoreHelpers = {
 
   // Generate unique ID
   generateId: () => {
-    return admin.firestore().collection('_').doc().id;
+    return getDb().collection('_').doc().id;
   },
 
   // Batch operations
   batch: () => {
-    return db.batch();
+    return getDb().batch();
   }
 };
 
-export default db;
+export { getDb, firebaseInitialized };
+export default () => getDb();
 
 

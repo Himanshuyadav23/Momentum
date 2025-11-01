@@ -26,7 +26,7 @@ export class User {
       updatedAt: now
     };
 
-    await usersCollection.doc(id).set({
+    await usersCollection().doc(id).set({
       ...user,
       createdAt: firestoreHelpers.dateToTimestamp(now),
       updatedAt: firestoreHelpers.dateToTimestamp(now)
@@ -36,7 +36,7 @@ export class User {
   }
 
   static async findById(id: string): Promise<IUser | null> {
-    const doc = await usersCollection.doc(id).get();
+    const doc = await usersCollection().doc(id).get();
     
     if (!doc.exists) {
       return null;
@@ -52,7 +52,7 @@ export class User {
   }
 
   static async findByFirebaseUid(firebaseUid: string): Promise<IUser | null> {
-    const snapshot = await usersCollection.where('firebaseUid', '==', firebaseUid).limit(1).get();
+    const snapshot = await usersCollection().where('firebaseUid', '==', firebaseUid).limit(1).get();
     
     if (snapshot.empty) {
       return null;
@@ -71,7 +71,7 @@ export class User {
 
   static async update(id: string, updateData: Partial<Omit<IUser, 'id' | 'createdAt'>>): Promise<IUser | null> {
     const now = new Date();
-    const docRef = usersCollection.doc(id);
+    const docRef = usersCollection().doc(id);
     const existing = await docRef.get();
     if (!existing.exists) {
       return null;
@@ -94,7 +94,7 @@ export class User {
 
   static async delete(id: string): Promise<boolean> {
     try {
-      await usersCollection.doc(id).delete();
+      await usersCollection().doc(id).delete();
       return true;
     } catch (error) {
       console.error('Error deleting user:', error);
