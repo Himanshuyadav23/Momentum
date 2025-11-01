@@ -9,7 +9,7 @@ import {
   onAuthStateChanged,
   User as FirebaseUser
 } from 'firebase/auth';
-import { auth, googleProvider } from '@/lib/firebase';
+import { auth, googleProvider, getFirebaseAuth, getFirebaseGoogleProvider } from '@/lib/firebase';
 import { apiClient } from '@/lib/api';
 
 interface User {
@@ -50,47 +50,69 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setFirebaseUser(firebaseUser);
-      
-      if (firebaseUser) {
-        try {
-          const idToken = await firebaseUser.getIdToken();
-          const response = await apiClient.login(idToken);
-          if (response.success && response.data) {
-            const d: any = response.data;
-            setUser(d.user);
-            // Use backend JWT for subsequent API calls
-            apiClient.setToken(d.token);
-          } else {
-            console.error('Login response failed:', response);
-            setUser(null);
-          }
-        } catch (error: any) {
-          console.error('Auth state change error:', error);
-          console.error('Error details:', {
-            message: error?.message,
-            stack: error?.stack,
-            response: error?.response
-          });
-          setUser(null);
-          // Don't clear Firebase auth, just clear backend user
-        }
-      } else {
-        setUser(null);
-        apiClient.clearToken();
-      }
-      
-      setLoading(false);
-    });
+    let unsubscribe: (() => void) | null = null;
 
-    return unsubscribe;
+    try {
+      // Get the real Auth instance for Firebase functions
+      const authInstance = getFirebaseAuth();
+      
+      unsubscribe = onAuthStateChanged(authInstance, async (firebaseUser) => {
+        setFirebaseUser(firebaseUser);
+        
+        if (firebaseUser) {
+          try {
+            const idToken = await firebaseUser.getIdToken();
+            const response = await apiClient.login(idToken);
+            if (response.success && response.data) {
+              const d: any = response.data;
+              setUser(d.user);
+              // Use backend JWT for subsequent API calls
+              apiClient.setToken(d.token);
+            } else {
+              console.error('Login response failed:', response);
+              setUser(null);
+            }
+          } catch (error: any) {
+            console.error('Auth state change error:', error);
+            console.error('Error details:', {
+              message: error?.message,
+              stack: error?.stack,
+              response: error?.response
+            });
+            setUser(null);
+            // Don't clear Firebase auth, just clear backend user
+          }
+        } else {
+          setUser(null);
+          apiClient.clearToken();
+        }
+        
+        setLoading(false);
+      });
+    } catch (error: any) {
+      console.error('Firebase initialization error in AuthContext:', error);
+      setLoading(false);
+      // If Firebase is not configured, show error but don't crash
+      if (error.message?.includes('Firebase not initialized') || error.message?.includes('Missing environment variables')) {
+        console.error('Firebase is not configured. Please set environment variables in Vercel.');
+      }
+    }
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, []);
 
   const signInWithGoogle = async () => {
     try {
       setLoading(true);
-      const result = await signInWithPopup(auth, googleProvider);
+      // Get real instances for Firebase functions
+      const authInstance = getFirebaseAuth();
+      const providerInstance = getFirebaseGoogleProvider();
+      
+      const result = await signInWithPopup(authInstance, providerInstance);
       const idToken = await result.user.getIdToken();
 
       const response = await apiClient.login(idToken);
@@ -108,6 +130,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error.message?.includes('Failed to connect')) {
         throw new Error('Backend server is not running. Please start the backend server.');
       }
+      if (error.message?.includes('Firebase not initialized') || error.message?.includes('Missing environment variables')) {
+        throw new Error('Firebase is not configured. Please set environment variables in Vercel project settings.');
+      }
       throw error;
     } finally {
       setLoading(false);
@@ -117,7 +142,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signInWithEmail = async (email: string, password: string) => {
     try {
       setLoading(true);
-      const result = await signInWithEmailAndPassword(auth, email, password);
+      // Get real Auth instance
+      const authInstance = getFirebaseAuth();
+      
+      const result = await signInWithEmailAndPassword(authInstance, email, password);
       const idToken = await result.user.getIdToken();
 
       const response = await apiClient.login(idToken);
@@ -135,6 +163,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error.message?.includes('Failed to connect')) {
         throw new Error('Backend server is not running. Please start the backend server.');
       }
+      if (error.message?.includes('Firebase not initialized') || error.message?.includes('Missing environment variables')) {
+        throw new Error('Firebase is not configured. Please set environment variables in Vercel project settings.');
+      }
       throw error;
     } finally {
       setLoading(false);
@@ -144,7 +175,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signUpWithEmail = async (email: string, password: string, name: string) => {
     try {
       setLoading(true);
-      const result = await createUserWithEmailAndPassword(auth, email, password);
+      // Get real Auth instance
+      const authInstance = getFirebaseAuth();
+      
+      const result = await createUserWithEmailAndPassword(authInstance, email, password);
       const idToken = await result.user.getIdToken();
 
       const response = await apiClient.login(idToken);
@@ -153,8 +187,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(d.user);
         apiClient.setToken(d.token);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Email sign up error:', error);
+      if (error.message?.includes('Firebase not initialized') || error.message?.includes('Missing environment variables')) {
+        throw new Error('Firebase is not configured. Please set environment variables in Vercel project settings.');
+      }
       throw error;
     } finally {
       setLoading(false);
@@ -163,11 +200,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     try {
-      await signOut(auth);
+      // Get real Auth instance
+      const authInstance = getFirebaseAuth();
+      await signOut(authInstance);
       setUser(null);
       apiClient.clearToken();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Logout error:', error);
+      if (error.message?.includes('Firebase not initialized') || error.message?.includes('Missing environment variables')) {
+        // If Firebase is not configured, just clear local state
+        setUser(null);
+        apiClient.clearToken();
+        return;
+      }
       throw error;
     }
   };

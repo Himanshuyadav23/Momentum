@@ -2,19 +2,19 @@ import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth, GoogleAuthProvider } from 'firebase/auth';
 
 let app: FirebaseApp | null = null;
-let authInstance: Auth | null = null;
-let googleProviderInstance: GoogleAuthProvider | null = null;
+let _authInstance: Auth | null = null;
+let _googleProviderInstance: GoogleAuthProvider | null = null;
 let initializationAttempted = false;
 
 // Lazy initialization function
 const initializeFirebase = (): void => {
   // If already initialized, return
-  if (authInstance && googleProviderInstance) {
+  if (_authInstance && _googleProviderInstance) {
     return;
   }
 
-  // Prevent multiple initialization attempts
-  if (initializationAttempted && !authInstance) {
+  // Prevent multiple initialization attempts if already tried and failed
+  if (initializationAttempted && !_authInstance) {
     return;
   }
   initializationAttempted = true;
@@ -32,7 +32,6 @@ const initializeFirebase = (): void => {
     
     console.error('❌ Firebase environment variables not set:', missingVars.join(', '));
     console.error('   Authentication will not work. Please set these variables in Vercel environment settings.');
-    // Don't throw error at module load - let it fail gracefully at runtime
     return;
   }
 
@@ -55,20 +54,19 @@ const initializeFirebase = (): void => {
       app = initializeApp(firebaseConfig);
     }
     
-    authInstance = getAuth(app);
-    googleProviderInstance = new GoogleAuthProvider();
+    _authInstance = getAuth(app);
+    _googleProviderInstance = new GoogleAuthProvider();
     
     console.log('✅ Firebase initialized successfully');
   } catch (error: any) {
     console.error('❌ Firebase initialization error:', error);
-    // Don't throw - let it fail gracefully at runtime
   }
 };
 
-// Getter functions that initialize on first access
+// Getter functions that ensure initialization and return real instances
 const getAuthInstance = (): Auth => {
   initializeFirebase();
-  if (!authInstance) {
+  if (!_authInstance) {
     const missingVars = [];
     if (!process.env.NEXT_PUBLIC_FIREBASE_API_KEY) missingVars.push('NEXT_PUBLIC_FIREBASE_API_KEY');
     if (!process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID) missingVars.push('NEXT_PUBLIC_FIREBASE_PROJECT_ID');
@@ -79,12 +77,12 @@ const getAuthInstance = (): Auth => {
       `Please configure these in your Vercel project settings (Settings → Environment Variables).`
     );
   }
-  return authInstance;
+  return _authInstance;
 };
 
 const getGoogleProviderInstance = (): GoogleAuthProvider => {
   initializeFirebase();
-  if (!googleProviderInstance) {
+  if (!_googleProviderInstance) {
     const missingVars = [];
     if (!process.env.NEXT_PUBLIC_FIREBASE_API_KEY) missingVars.push('NEXT_PUBLIC_FIREBASE_API_KEY');
     if (!process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID) missingVars.push('NEXT_PUBLIC_FIREBASE_PROJECT_ID');
@@ -95,47 +93,95 @@ const getGoogleProviderInstance = (): GoogleAuthProvider => {
       `Please configure these in your Vercel project settings (Settings → Environment Variables).`
     );
   }
-  return googleProviderInstance;
+  return _googleProviderInstance;
 };
 
-// Export lazy getters using Proxy for backwards compatibility
-// This allows existing code to use `auth` and `googleProvider` directly
-// The Proxy intercepts property access and initializes Firebase on first use
-export const auth = (() => {
-  let instance: Auth | null = null;
-  return new Proxy({} as Auth, {
-    get(_, prop) {
-      if (!instance) {
-        instance = getAuthInstance();
-      }
-      const value = (instance as any)[prop];
-      if (typeof value === 'function') {
-        return value.bind(instance);
-      }
-      return value;
+// Try to initialize immediately if we're in browser and have env vars
+if (typeof window !== 'undefined') {
+  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+  const authDomain = process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN;
+  
+  if (apiKey && projectId && authDomain) {
+    initializeFirebase();
+  }
+}
+
+// Initialize immediately on client side if env vars are available
+if (typeof window !== 'undefined') {
+  try {
+    initializeFirebase();
+  } catch (e) {
+    // Ignore - will initialize lazily
+  }
+}
+
+// Export getter functions for accessing real instances (for Firebase functions)
+// Named differently to avoid conflict with Firebase's getAuth function
+export const getFirebaseAuth = () => getAuthInstance();
+export const getFirebaseGoogleProvider = () => getGoogleProviderInstance();
+
+// Export Proxy objects for property access and backward compatibility
+// However, for Firebase functions like signInWithPopup, use getFirebaseAuth() instead
+export const auth: Auth = new Proxy({} as Auth, {
+  get(_target, prop) {
+    // If accessing 'getRealInstance' property, return the actual instance
+    if (prop === 'getRealInstance') {
+      return () => getAuthInstance();
     }
-  });
-})();
-
-export const googleProvider = (() => {
-  let instance: GoogleAuthProvider | null = null;
-  return new Proxy({} as GoogleAuthProvider, {
-    get(_, prop) {
-      if (!instance) {
-        instance = getGoogleProviderInstance();
-      }
-      const value = (instance as any)[prop];
-      if (typeof value === 'function') {
-        return value.bind(instance);
-      }
-      return value;
+    const instance = getAuthInstance();
+    const value = (instance as any)[prop];
+    if (typeof value === 'function') {
+      return value.bind(instance);
     }
-  });
-})();
+    return value;
+  },
+  has(_target, prop) {
+    try {
+      const instance = getAuthInstance();
+      return prop in instance;
+    } catch {
+      return false;
+    }
+  },
+  ownKeys() {
+    const instance = getAuthInstance();
+    return Object.keys(instance);
+  },
+  getOwnPropertyDescriptor(_target, prop) {
+    const instance = getAuthInstance();
+    return Object.getOwnPropertyDescriptor(instance, prop);
+  },
+  getPrototypeOf() {
+    const instance = getAuthInstance();
+    return Object.getPrototypeOf(instance);
+  }
+} as Auth);
 
-export default (() => {
-  initializeFirebase();
-  return app;
-})();
-
-
+export const googleProvider: GoogleAuthProvider = new Proxy({} as GoogleAuthProvider, {
+  get(_target, prop) {
+    // If accessing 'getRealInstance' property, return the actual instance
+    if (prop === 'getRealInstance') {
+      return () => getGoogleProviderInstance();
+    }
+    const instance = getGoogleProviderInstance();
+    const value = (instance as any)[prop];
+    if (typeof value === 'function') {
+      return value.bind(instance);
+    }
+    return value;
+  },
+  has(_target, prop) {
+    try {
+      const instance = getGoogleProviderInstance();
+      return prop in instance;
+    } catch {
+      return false;
+    }
+  },
+  getPrototypeOf() {
+    const instance = getGoogleProviderInstance();
+    return Object.getPrototypeOf(instance);
+  }
+} as GoogleAuthProvider);
+export default app;
