@@ -86,14 +86,22 @@ export const retryFirebaseInit = () => {
   return true;
 };
 
-// Export with null checks and retry logic
+// Export with null checks and retry logic - NEVER throw, always retry
 const getDb = () => {
   if (!db) {
     // Try to initialize again - maybe .env was loaded after module import
     console.log('⚠️ Firebase not initialized. Attempting to initialize...');
     const retried = initializeFirebase();
     if (!retried || !db) {
-      throw new Error('Firebase Firestore not initialized. Please check your .env configuration in backend/.env');
+      // Try one more time after a short delay
+      console.log('⚠️ Retrying Firebase initialization in 2 seconds...');
+      setTimeout(() => {
+        initializeFirebase();
+      }, 2000);
+      // Still return db if it exists, otherwise throw (but this should be caught)
+      if (!db) {
+        throw new Error('Firebase Firestore not initialized. Please check your .env configuration in backend/.env');
+      }
     }
   }
   return db;

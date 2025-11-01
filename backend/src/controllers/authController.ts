@@ -52,11 +52,28 @@ export const authenticate = async (req: Request, res: Response) => {
         }
       }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Authentication error:', error);
+    console.error('Error details:', {
+      message: error?.message,
+      code: error?.code,
+      stack: error?.stack
+    });
+    
+    // Provide more specific error messages
+    let errorMessage = 'Authentication failed';
+    if (error?.message?.includes('token')) {
+      errorMessage = 'Invalid Firebase token';
+    } else if (error?.message?.includes('network') || error?.message?.includes('fetch')) {
+      errorMessage = 'Network error. Please check your connection.';
+    } else if (error?.message) {
+      errorMessage = error.message;
+    }
+    
     return res.status(401).json({
       success: false,
-      message: 'Authentication failed'
+      message: errorMessage,
+      error: process.env.NODE_ENV === 'development' ? error?.message : undefined
     });
   }
 };

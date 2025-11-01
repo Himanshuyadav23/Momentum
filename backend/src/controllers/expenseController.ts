@@ -4,27 +4,51 @@ import { Expense } from '../models/Expense';
 export const createExpense = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
-    const { amount, category, description, date, tags } = req.body;
+    const { amount, currency, category, description, date } = req.body;
 
-    // Sanitize payload: Firestore rejects undefined fields like tags
+    // Validate required fields
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Amount must be greater than 0'
+      });
+    }
+
+    if (!category || !category.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Category is required'
+      });
+    }
+
+    // Default to INR if currency not provided
+    const expenseCurrency = currency || 'INR';
+
+    // Sanitize and create expense
     const expense = await Expense.create({
       userId,
-      amount,
-      category,
-      description,
-      date: date ? new Date(date) : new Date(),
-      // Do not include tags at write time unless explicitly supported by schema
+      amount: parseFloat(amount),
+      currency: expenseCurrency,
+      category: category.trim(),
+      description: description?.trim() || '',
+      date: date ? new Date(date) : new Date()
     });
 
     return res.status(201).json({
       success: true,
       data: { expense }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Create expense error:', error);
+    console.error('Error details:', {
+      message: error?.message,
+      code: error?.code,
+      stack: error?.stack
+    });
     return res.status(500).json({
       success: false,
-      message: 'Failed to create expense'
+      message: error?.message || 'Failed to create expense',
+      error: process.env.NODE_ENV === 'development' ? error?.message : undefined
     });
   }
 };
@@ -146,7 +170,7 @@ export const getExpenseStats = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       success: true,
-      data: { stats }
+      data: stats // Return stats directly, not wrapped in { stats }
     });
   } catch (error) {
     console.error('Get expense stats error:', error);
@@ -158,7 +182,13 @@ export const getExpenseStats = async (req: Request, res: Response) => {
       const indexUrl = match ? match[0] : undefined;
       return res.status(200).json({
         success: true,
-        data: { stats: { total: 0, byCategory: {}, byDay: {} } },
+        data: {
+          totalAmount: 0,
+          expenseCount: 0,
+          categoryBreakdown: {},
+          dailyBreakdown: {},
+          averageDaily: 0
+        },
         message: 'Missing Firestore index; returning empty expense stats.',
         error: indexUrl ? `Create index: ${indexUrl}` : 'Create the required Firestore composite index.'
       });

@@ -9,6 +9,7 @@ import {
   deleteHabitLog 
 } from '../controllers/habitController';
 import { authenticate as authMiddleware } from '../middleware/auth';
+import { asyncHandler } from '../middleware/asyncHandler';
 
 const router = express.Router();
 
@@ -16,24 +17,24 @@ const router = express.Router();
 router.use(authMiddleware);
 
 // GET /api/habits
-router.get('/', getHabits);
+router.get('/', asyncHandler(getHabits));
 
 // POST /api/habits
-router.post('/', createHabit);
+router.post('/', asyncHandler(createHabit));
 
 // PUT /api/habits/:habitId
-router.put('/:habitId', updateHabit);
+router.put('/:habitId', asyncHandler(updateHabit));
 
 // DELETE /api/habits/:habitId
-router.delete('/:habitId', deleteHabit);
+router.delete('/:habitId', asyncHandler(deleteHabit));
 
 // POST /api/habits/:habitId/log
-router.post('/:habitId/log', logHabit);
+router.post('/:habitId/log', asyncHandler(logHabit));
 
 // GET /api/habits/:habitId/logs
-router.get('/:habitId/logs', getHabitLogs);
+router.get('/:habitId/logs', asyncHandler(getHabitLogs));
 
 // DELETE /api/habits/logs/:logId
-router.delete('/logs/:logId', deleteHabitLog);
+router.delete('/logs/:logId', asyncHandler(deleteHabitLog));
 
 export default router;

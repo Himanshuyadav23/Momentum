@@ -6,10 +6,18 @@ export const createHabit = async (req: Request, res: Response) => {
     const userId = (req as any).user.id;
     const { name, description, frequency, targetCount } = req.body;
 
+    // Validate required fields
+    if (!name || !name.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Habit name is required'
+      });
+    }
+
     const habit = await Habit.create({
       userId,
-      name,
-      description,
+      name: name.trim(),
+      description: description?.trim() || '',
       frequency: frequency || 'daily',
       targetCount: targetCount || 1,
       currentStreak: 0,
@@ -21,11 +29,17 @@ export const createHabit = async (req: Request, res: Response) => {
       success: true,
       data: { habit }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Create habit error:', error);
+    console.error('Error details:', {
+      message: error?.message,
+      code: error?.code,
+      stack: error?.stack
+    });
     return res.status(500).json({
       success: false,
-      message: 'Failed to create habit'
+      message: error?.message || 'Failed to create habit',
+      error: process.env.NODE_ENV === 'development' ? error?.message : undefined
     });
   }
 };
@@ -81,9 +95,17 @@ export const updateHabit = async (req: Request, res: Response) => {
 };
 
 export const deleteHabit = async (req: Request, res: Response) => {
+  const { habitId } = req.params;
+  
   try {
     const userId = (req as any).user.id;
-    const { habitId } = req.params;
+
+    if (!habitId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Habit ID is required'
+      });
+    }
 
     const habit = await Habit.findById(habitId);
 
@@ -94,32 +116,48 @@ export const deleteHabit = async (req: Request, res: Response) => {
       });
     }
 
-    const deleted = await Habit.delete(habitId);
-
-    if (!deleted) {
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to delete habit'
-      });
+    // Delete associated habit logs first (in background, don't block on errors)
+    try {
+      const allLogs = await HabitLog.findByHabitId(habitId);
+      const deletePromises = allLogs.map(log => 
+        HabitLog.delete(log.id).catch(err => {
+          console.warn(`Failed to delete habit log ${log.id}:`, err);
+        })
+      );
+      await Promise.allSettled(deletePromises);
+    } catch (logError: any) {
+      console.warn('Error deleting habit logs (continuing with habit deletion):', logError);
+      // Continue with habit deletion even if log deletion fails
     }
+
+    // Delete the habit itself
+    await Habit.delete(habitId);
 
     return res.status(200).json({
       success: true,
       message: 'Habit deleted successfully'
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Delete habit error:', error);
+    console.error('Error details:', {
+      message: error?.message,
+      code: error?.code,
+      stack: error?.stack,
+      habitId: habitId || 'unknown'
+    });
     return res.status(500).json({
       success: false,
-      message: 'Failed to delete habit'
+      message: error?.message || 'Failed to delete habit',
+      error: process.env.NODE_ENV === 'development' ? error?.message : undefined
     });
   }
 };
 
 export const logHabit = async (req: Request, res: Response) => {
+  const { habitId } = req.params;
+  
   try {
     const userId = (req as any).user.id;
-    const { habitId } = req.params;
     const { notes } = req.body;
 
     const habit = await Habit.findById(habitId);
@@ -131,7 +169,7 @@ export const logHabit = async (req: Request, res: Response) => {
       });
     }
 
-    // Check if already completed today
+    // Check how many times completed today
     const today = new Date();
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
@@ -141,10 +179,11 @@ export const logHabit = async (req: Request, res: Response) => {
       endDate: endOfDay
     });
 
-    if (todayLogs.length > 0) {
+    // Allow multiple completions up to targetCount
+    if (todayLogs.length >= habit.targetCount) {
       return res.status(400).json({
         success: false,
-        message: 'This habit is already completed today'
+        message: `You've already completed this habit ${habit.targetCount} time${habit.targetCount > 1 ? 's' : ''} today (target: ${habit.targetCount})`
       });
     }
 
@@ -155,43 +194,96 @@ export const logHabit = async (req: Request, res: Response) => {
       notes
     });
 
-    // Improved streak calculation
+    // Improved streak calculation with targetCount support
     // Get all logs ordered by date (newest first)
     const allLogs = await HabitLog.findByHabitId(habitId, {
-      limit: 100 // Get last 100 logs for streak calculation
+      limit: 500 // Get more logs to calculate streaks properly
     });
 
     let newStreak = 0;
     let longestStreak = habit.longestStreak;
     
     if (allLogs.length > 0) {
-      // Sort by date descending (newest first)
-      allLogs.sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime());
-      
-      // Calculate current streak
-      let consecutiveDays = 1;
-      let checkDate = new Date(allLogs[0].completedAt);
-      checkDate.setHours(0, 0, 0, 0);
-      
-      for (let i = 1; i < allLogs.length; i++) {
-        const logDate = new Date(allLogs[i].completedAt);
+      // Group logs by date
+      const logsByDate = new Map<string, number>();
+      allLogs.forEach(log => {
+        const logDate = new Date(log.completedAt);
         logDate.setHours(0, 0, 0, 0);
+        const dateKey = logDate.toISOString().split('T')[0];
+        logsByDate.set(dateKey, (logsByDate.get(dateKey) || 0) + 1);
+      });
+      
+      // Sort dates descending
+      const sortedDates = Array.from(logsByDate.keys()).sort((a, b) => b.localeCompare(a));
+      
+      // Calculate streak - only count days where targetCount is met
+      let consecutiveDays = 0;
+      const todayDate = new Date();
+      todayDate.setHours(0, 0, 0, 0);
+      const todayKey = todayDate.toISOString().split('T')[0];
+      
+      // Check if today meets target
+      const todayCount = logsByDate.get(todayKey) || 0;
+      if (todayCount >= habit.targetCount) {
+        consecutiveDays = 1;
         
-        const daysDiff = Math.floor((checkDate.getTime() - logDate.getTime()) / (1000 * 60 * 60 * 24));
-        
-        if (daysDiff === 1) {
-          consecutiveDays++;
-          checkDate = logDate;
-        } else if (daysDiff > 1) {
-          break; // Gap in streak
+        // Count backwards for consecutive days that meet target
+        for (let i = 1; i < sortedDates.length; i++) {
+          const currentDateKey = sortedDates[i - 1]; // Previous in sorted list (more recent)
+          const prevDateKey = sortedDates[i]; // Next in sorted list (less recent)
+          
+          const currentDate = new Date(currentDateKey);
+          const prevDate = new Date(prevDateKey);
+          
+          // Calculate if dates are exactly 1 day apart
+          const daysDiff = Math.floor((currentDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24));
+          
+          if (daysDiff === 1) {
+            // Dates are consecutive
+            const prevCount = logsByDate.get(prevDateKey) || 0;
+            if (prevCount >= habit.targetCount) {
+              consecutiveDays++;
+            } else {
+              break; // Gap in streak - target not met
+            }
+          } else {
+            break; // Gap in dates (more than 1 day apart)
+          }
         }
       }
       
       newStreak = consecutiveDays;
-      longestStreak = Math.max(longestStreak, newStreak);
-    } else {
-      newStreak = 1;
-      longestStreak = Math.max(longestStreak, 1);
+      
+      // Calculate longest streak
+      let currentStreak = 0;
+      let maxStreak = 0;
+      for (let i = 0; i < sortedDates.length; i++) {
+        const dateKey = sortedDates[i];
+        const count = logsByDate.get(dateKey) || 0;
+        
+        if (count >= habit.targetCount) {
+          if (i === 0) {
+            currentStreak = 1;
+          } else {
+            const currentDate = new Date(dateKey);
+            const prevDate = new Date(sortedDates[i - 1]);
+            const daysDiff = Math.floor((prevDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+            
+            if (daysDiff === 1) {
+              // Consecutive day
+              currentStreak++;
+            } else {
+              // Gap in dates
+              currentStreak = 1;
+            }
+          }
+          maxStreak = Math.max(maxStreak, currentStreak);
+        } else {
+          currentStreak = 0;
+        }
+      }
+      
+      longestStreak = Math.max(longestStreak, maxStreak, newStreak);
     }
 
     await Habit.update(habitId, {
@@ -203,11 +295,18 @@ export const logHabit = async (req: Request, res: Response) => {
       success: true,
       data: { habitLog }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Log habit error:', error);
+    console.error('Error details:', {
+      message: error?.message,
+      code: error?.code,
+      stack: error?.stack,
+      habitId: habitId || 'unknown'
+    });
     return res.status(500).json({
       success: false,
-      message: 'Failed to log habit'
+      message: error?.message || 'Failed to log habit',
+      error: process.env.NODE_ENV === 'development' ? error?.message : undefined
     });
   }
 };
@@ -281,40 +380,93 @@ export const deleteHabitLog = async (req: Request, res: Response) => {
       });
     }
 
-    // Recalculate streak for the habit
+    // Recalculate streak for the habit (with targetCount support)
     const habit = await Habit.findById(habitId);
     if (habit) {
       const allLogs = await HabitLog.findByHabitId(habitId, {
-        limit: 100
+        limit: 500
       });
 
       let newStreak = 0;
       let longestStreak = habit.longestStreak;
       
       if (allLogs.length > 0) {
-        allLogs.sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime());
-        
-        let consecutiveDays = 1;
-        let checkDate = new Date(allLogs[0].completedAt);
-        checkDate.setHours(0, 0, 0, 0);
-        
-        for (let i = 1; i < allLogs.length; i++) {
-          const logDate = new Date(allLogs[i].completedAt);
+        // Group logs by date
+        const logsByDate = new Map<string, number>();
+        allLogs.forEach(log => {
+          const logDate = new Date(log.completedAt);
           logDate.setHours(0, 0, 0, 0);
+          const dateKey = logDate.toISOString().split('T')[0];
+          logsByDate.set(dateKey, (logsByDate.get(dateKey) || 0) + 1);
+        });
+        
+        // Sort dates descending
+        const sortedDates = Array.from(logsByDate.keys()).sort((a, b) => b.localeCompare(a));
+        
+        // Calculate streak - only count days where targetCount is met
+        let consecutiveDays = 0;
+        const todayDate = new Date();
+        todayDate.setHours(0, 0, 0, 0);
+        const todayKey = todayDate.toISOString().split('T')[0];
+        
+        // Check if today meets target
+        const todayCount = logsByDate.get(todayKey) || 0;
+        if (todayCount >= habit.targetCount) {
+          consecutiveDays = 1;
           
-          const daysDiff = Math.floor((checkDate.getTime() - logDate.getTime()) / (1000 * 60 * 60 * 24));
-          
-          if (daysDiff === 1) {
-            consecutiveDays++;
-            checkDate = logDate;
-          } else if (daysDiff > 1) {
-            break;
+          // Count backwards for consecutive days that meet target
+          for (let i = 1; i < sortedDates.length; i++) {
+            const prevDateKey = sortedDates[i];
+            const prevDate = new Date(prevDateKey);
+            const expectedPrevDate = new Date(sortedDates[i - 1]);
+            expectedPrevDate.setDate(expectedPrevDate.getDate() - 1);
+            
+            // Check if dates are consecutive
+            if (prevDate.toISOString().split('T')[0] === expectedPrevDate.toISOString().split('T')[0]) {
+              const prevCount = logsByDate.get(prevDateKey) || 0;
+              if (prevCount >= habit.targetCount) {
+                consecutiveDays++;
+              } else {
+                break; // Gap in streak - target not met
+              }
+            } else {
+              break; // Gap in dates
+            }
           }
         }
         
         newStreak = consecutiveDays;
-      } else {
-        newStreak = 0;
+        
+        // Calculate longest streak
+        let currentStreak = 0;
+        let maxStreak = 0;
+        for (let i = 0; i < sortedDates.length; i++) {
+          const dateKey = sortedDates[i];
+          const count = logsByDate.get(dateKey) || 0;
+          
+          if (count >= habit.targetCount) {
+            if (i === 0) {
+              currentStreak = 1;
+            } else {
+              const currentDate = new Date(dateKey);
+              const prevDate = new Date(sortedDates[i - 1]);
+              const daysDiff = Math.floor((prevDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+              
+              if (daysDiff === 1) {
+                // Consecutive day
+                currentStreak++;
+              } else {
+                // Gap in dates
+                currentStreak = 1;
+              }
+            }
+            maxStreak = Math.max(maxStreak, currentStreak);
+          } else {
+            currentStreak = 0;
+          }
+        }
+        
+        longestStreak = Math.max(longestStreak, maxStreak, newStreak);
       }
 
       await Habit.update(habitId, {

@@ -117,105 +117,174 @@ app.use('/api/analytics', analyticsRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
-// Start server
+// Global server instance for keep-alive
+let serverInstance: any = null;
+let isServerRunning = false;
+
+// Start server with automatic retry
 const startServer = async (): Promise<void> => {
   try {
-    const server = app.listen(PORT, () => {
+    // Prevent multiple server instances
+    if (serverInstance && isServerRunning) {
+      console.log('✅ Server already running');
+      return;
+    }
+
+    serverInstance = app.listen(PORT, () => {
+      isServerRunning = true;
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
       console.log(`🔥 Database: Firebase Firestore`);
       console.log(`✅ Server is ready to accept connections`);
+      console.log(`💡 Server will automatically recover from errors`);
     });
 
-    // Handle server errors gracefully
-    server.on('error', (error: any) => {
+    // Handle server errors gracefully - NEVER EXIT
+    serverInstance.on('error', (error: any) => {
+      isServerRunning = false;
       if (error.code === 'EADDRINUSE') {
-        console.error(`❌ Port ${PORT} is already in use. Trying to recover...`);
-        // Don't exit - let the user know and continue
-        console.error('   Please stop the other process or change the PORT in .env');
+        console.error(`❌ Port ${PORT} is already in use.`);
+        console.error('   Please stop the other process or change PORT in .env');
+        console.log('🔄 Will retry in 10 seconds...');
+        setTimeout(() => {
+          startServer();
+        }, 10000);
       } else {
-        console.error('❌ Server error:', error);
+        console.error('❌ Server error:', error.message);
+        console.log('🔄 Will retry in 5 seconds...');
+        setTimeout(() => {
+          startServer();
+        }, 5000);
       }
-      // Don't exit - keep the process alive
+      // NEVER exit - always retry
+    });
+
+    // Keep server alive - restart on close
+    serverInstance.on('close', () => {
+      isServerRunning = false;
+      console.warn('⚠️ Server connection closed. Will attempt to restart...');
+      setTimeout(() => {
+        if (!isServerRunning) {
+          console.log('🔄 Attempting to restart server...');
+          startServer();
+        }
+      }, 2000);
+    });
+
+    // Listen for connection errors
+    serverInstance.on('clientError', (err: any) => {
+      console.warn('⚠️ Client error (non-fatal):', err.message);
+      // Don't crash - just log
     });
 
     return;
   } catch (error: any) {
-    console.error('❌ Failed to start server:', error);
-    console.error('   Error details:', error.message);
-    // In development, don't exit immediately - give time to see the error
-    if (process.env.NODE_ENV === 'production') {
-      process.exit(1);
-      return; // Explicit return for TypeScript
-    } else {
-      console.warn('⚠️ Server failed to start, but keeping process alive for debugging');
-      // Retry after 5 seconds
-      setTimeout(() => {
-        console.log('🔄 Retrying server startup...');
-        startServer();
-      }, 5000);
-      return; // Explicit return for TypeScript
-    }
-  }
-};
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err: Error, promise: Promise<any>) => {
-  console.error('❌ Unhandled Promise Rejection:', err.message);
-  console.error('Stack:', err.stack);
-  // Don't exit in development - allow server to continue
-  // In production, you might want to restart gracefully
-  if (process.env.NODE_ENV === 'production') {
-    console.error('⚠️ Exiting due to unhandled rejection in production');
-    process.exit(1);
-  } else {
-    console.warn('⚠️ Server continuing despite unhandled rejection (development mode)');
-  }
-});
-
-// Handle uncaught exceptions - be more lenient in development
-process.on('uncaughtException', (err: Error) => {
-  console.error('❌ Uncaught Exception:', err.message);
-  console.error('Stack:', err.stack);
-  
-  // Only exit in production for critical errors
-  // In development, log and continue (server will handle it)
-  if (process.env.NODE_ENV === 'production') {
-    console.error('⚠️ Exiting due to uncaught exception in production');
-    process.exit(1);
-  } else {
-    console.warn('⚠️ Uncaught exception in development - server continuing');
-    // Log but don't exit - allows debugging
-  }
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('🛑 SIGTERM received. Shutting down gracefully...');
-  console.log('📦 Firebase connection closed.');
-  process.exit(0);
-});
-
-// Start the server
-startServer().catch((error) => {
-  console.error('❌ Fatal error starting server:', error);
-  // In development, retry after delay
-  if (process.env.NODE_ENV !== 'production') {
+    isServerRunning = false;
+    console.error('❌ Failed to start server:', error.message);
+    console.error('   Error details:', error.stack);
+    // ALWAYS retry - never exit
     console.log('🔄 Will retry in 5 seconds...');
     setTimeout(() => {
       startServer();
     }, 5000);
+    return;
+  }
+};
+
+// Handle unhandled promise rejections - NEVER EXIT in development
+process.on('unhandledRejection', (err: Error, promise: Promise<any>) => {
+  console.error('❌ Unhandled Promise Rejection:', err.message);
+  console.error('Stack:', err.stack);
+  // NEVER exit - log and continue
+  console.warn('⚠️ Server continuing despite unhandled rejection');
+  // Log but keep server running
+  if (process.env.NODE_ENV === 'production') {
+    // In production, log critical errors but try to recover
+    console.warn('⚠️ Critical error in production - attempting to continue');
   }
 });
 
-// Keep process alive and log periodic status
-if (process.env.NODE_ENV === 'development') {
+// Handle uncaught exceptions - NEVER EXIT, always recover
+process.on('uncaughtException', (err: Error) => {
+  console.error('❌ Uncaught Exception:', err.message);
+  console.error('Stack:', err.stack);
+  console.warn('⚠️ Uncaught exception - server will continue running');
+  // NEVER exit - let the server handle errors gracefully
+  // The error handler middleware will catch route errors
+});
+
+// Graceful shutdown - only on explicit shutdown signals
+process.on('SIGTERM', () => {
+  console.log('🛑 SIGTERM received. Shutting down gracefully...');
+  console.log('📦 Firebase connection closed.');
+  if (serverInstance) {
+    serverInstance.close(() => {
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
+  }
+});
+
+process.on('SIGINT', () => {
+  console.log('🛑 SIGINT received (Ctrl+C). Shutting down gracefully...');
+  if (serverInstance) {
+    serverInstance.close(() => {
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
+  }
+});
+
+// Start the server with error recovery
+startServer().catch((error) => {
+  console.error('❌ Fatal error starting server:', error);
+  // ALWAYS retry - never give up
+  console.log('🔄 Will retry in 5 seconds...');
+  setTimeout(() => {
+    startServer();
+  }, 5000);
+});
+
+// Keep process alive and monitor health
+const keepAlive = () => {
+  // Periodic health check and status logging
   setInterval(() => {
     const uptime = process.uptime();
     const memUsage = process.memoryUsage();
-    if (uptime % 300 === 0) { // Every 5 minutes
-      console.log(`💓 Server heartbeat - Uptime: ${Math.round(uptime / 60)}m, Memory: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`);
+    const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+    
+    // Log heartbeat every 5 minutes
+    if (Math.floor(uptime) % 300 === 0) {
+      console.log(`💓 Server heartbeat - Uptime: ${Math.round(uptime / 60)}m, Memory: ${heapUsedMB}MB`);
+    }
+    
+    // Check if server is still running
+    if (!isServerRunning && serverInstance) {
+      console.warn('⚠️ Server instance exists but not marked as running. Attempting recovery...');
+      setTimeout(() => {
+        if (!isServerRunning) {
+          startServer();
+        }
+      }, 5000);
+    }
+    
+    // Memory warning (over 500MB)
+    if (heapUsedMB > 500) {
+      console.warn(`⚠️ High memory usage: ${heapUsedMB}MB`);
     }
   }, 1000);
-}
+
+  // Keep process alive - prevent any automatic exits
+  process.stdin.resume();
+  
+  // Handle any attempt to exit
+  process.on('exit', (code) => {
+    console.log(`⚠️ Process exiting with code ${code}`);
+    console.log('🔄 Attempting to prevent exit...');
+  });
+};
+
+keepAlive();

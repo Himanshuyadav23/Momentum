@@ -25,61 +25,85 @@ export interface IHabitLog {
 
 export class Habit {
   static async create(habitData: Omit<IHabit, 'id' | 'createdAt' | 'updatedAt'>): Promise<IHabit> {
-    const id = firestoreHelpers.generateId();
-    const now = new Date();
-    
-    const habit: IHabit = {
-      id,
-      ...habitData,
-      createdAt: now,
-      updatedAt: now
-    };
+    try {
+      const id = firestoreHelpers.generateId();
+      const now = new Date();
+      
+      const habit: IHabit = {
+        id,
+        ...habitData,
+        createdAt: now,
+        updatedAt: now
+      };
 
-    await habitsCollection().doc(id).set({
-      ...habit,
-      createdAt: firestoreHelpers.dateToTimestamp(now),
-      updatedAt: firestoreHelpers.dateToTimestamp(now)
-    });
+      await habitsCollection().doc(id).set({
+        ...habit,
+        createdAt: firestoreHelpers.dateToTimestamp(now),
+        updatedAt: firestoreHelpers.dateToTimestamp(now)
+      });
 
-    return habit;
+      return habit;
+    } catch (error: any) {
+      console.error('Error creating habit:', error);
+      throw new Error(`Failed to create habit: ${error?.message || 'Unknown error'}`);
+    }
   }
 
   static async findById(id: string): Promise<IHabit | null> {
-    const doc = await habitsCollection().doc(id).get();
-    
-    if (!doc.exists) {
-      return null;
-    }
+    try {
+      const doc = await habitsCollection().doc(id).get();
+      
+      if (!doc.exists) {
+        return null;
+      }
 
-    const data = doc.data()!;
-    return {
-      id: doc.id,
-      ...data,
-      createdAt: firestoreHelpers.timestampToDate(data.createdAt),
-      updatedAt: firestoreHelpers.timestampToDate(data.updatedAt)
-    } as IHabit;
-  }
-
-  static async findByUserId(userId: string, activeOnly: boolean = true): Promise<IHabit[]> {
-    let query = habitsCollection().where('userId', '==', userId);
-
-    if (activeOnly) {
-      query = query.where('isActive', '==', true);
-    }
-
-    query = query.orderBy('createdAt', 'desc');
-
-    const snapshot = await query.get();
-    
-    return snapshot.docs.map(doc => {
       const data = doc.data();
+      if (!data) {
+        return null;
+      }
+      
       return {
         id: doc.id,
         ...data,
         createdAt: firestoreHelpers.timestampToDate(data.createdAt),
         updatedAt: firestoreHelpers.timestampToDate(data.updatedAt)
       } as IHabit;
-    });
+    } catch (error: any) {
+      console.error('Error finding habit by id:', error);
+      return null;
+    }
+  }
+
+  static async findByUserId(userId: string, activeOnly: boolean = true): Promise<IHabit[]> {
+    try {
+      let query = habitsCollection().where('userId', '==', userId);
+
+      if (activeOnly) {
+        query = query.where('isActive', '==', true);
+      }
+
+      query = query.orderBy('createdAt', 'desc');
+
+      const snapshot = await query.get();
+      
+      return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          createdAt: firestoreHelpers.timestampToDate(data.createdAt),
+          updatedAt: firestoreHelpers.timestampToDate(data.updatedAt)
+        } as IHabit;
+      });
+    } catch (error: any) {
+      console.error('Error finding habits by userId:', error);
+      // Return empty array instead of throwing to prevent crashes
+      if (error.code === 9 || error.code === 'FAILED_PRECONDITION') {
+        console.warn('⚠️ Firestore index missing for Habit.findByUserId - returning empty array');
+        return [];
+      }
+      throw new Error(`Failed to find habits: ${error?.message || 'Unknown error'}`);
+    }
   }
 
   static async update(id: string, updateData: Partial<Omit<IHabit, 'id' | 'createdAt'>>): Promise<IHabit | null> {
@@ -97,9 +121,14 @@ export class Habit {
     try {
       await habitsCollection().doc(id).delete();
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting habit:', error);
-      return false;
+      console.error('Delete error details:', {
+        message: error?.message,
+        code: error?.code,
+        id
+      });
+      throw new Error(`Failed to delete habit: ${error?.message || 'Unknown error'}`);
     }
   }
 }
@@ -129,33 +158,112 @@ export class HabitLog {
     endDate?: Date;
     limit?: number;
   }): Promise<IHabitLog[]> {
-    let query = habitLogsCollection().where('habitId', '==', habitId);
+    try {
+      let query = habitLogsCollection().where('habitId', '==', habitId);
 
-    if (options?.startDate) {
-      query = query.where('completedAt', '>=', firestoreHelpers.dateToTimestamp(options.startDate));
+      const hasStartDate = !!options?.startDate;
+      const hasEndDate = !!options?.endDate;
+      
+      // If we have date filters, use them with orderBy
+      // IMPORTANT: Only use ONE range operator in the query to avoid complex index requirements
+      // We'll filter the second range in memory
+      if (hasStartDate) {
+        // Use >= in query (most common case - getting logs from a start date forward)
+        query = query.where('completedAt', '>=', firestoreHelpers.dateToTimestamp(options.startDate!));
+        // Must use orderBy with range queries - use 'asc' to match expected index
+        query = query.orderBy('completedAt', 'asc');
+      } else if (hasEndDate && !hasStartDate) {
+        // Only endDate - use <= in query
+        query = query.where('completedAt', '<=', firestoreHelpers.dateToTimestamp(options.endDate!));
+        query = query.orderBy('completedAt', 'asc');
+      } else {
+        // No date filters - just order by date (descending for newest first)
+        query = query.orderBy('completedAt', 'desc');
+      }
+
+      if (options?.limit && !hasStartDate && !hasEndDate) {
+        query = query.limit(options.limit);
+      }
+
+      const snapshot = await query.get();
+      
+      let results = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          completedAt: firestoreHelpers.timestampToDate(data.completedAt),
+          createdAt: firestoreHelpers.timestampToDate(data.createdAt)
+        } as IHabitLog;
+      });
+      
+      // If we used 'asc' for index compatibility, reverse to get newest first
+      if (hasStartDate || hasEndDate) {
+        results = results.reverse();
+      }
+      
+      // Apply date filters in memory as fallback (more reliable than query sometimes)
+      if (hasStartDate || hasEndDate) {
+        const start = options.startDate ? new Date(options.startDate).getTime() : 0;
+        const end = options.endDate ? new Date(options.endDate).getTime() : Number.MAX_SAFE_INTEGER;
+        results = results.filter(log => {
+          const logTime = log.completedAt.getTime();
+          return logTime >= start && logTime <= end;
+        });
+      }
+      
+      // Sort by date descending (newest first)
+      results.sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime());
+      
+      // Apply limit after filtering
+      if (options?.limit && options.limit > 0) {
+        return results.slice(0, options.limit);
+      }
+      
+      return results;
+    } catch (error: any) {
+      // If index error, fall back to fetching all and filtering in memory
+      if (error.code === 9 || error.code === 'FAILED_PRECONDITION') {
+        console.warn('⚠️ Firestore index missing for HabitLog.findByHabitId - using fallback method');
+        
+        // Fallback: fetch all logs for habit, filter in memory
+        const allQuery = habitLogsCollection().where('habitId', '==', habitId);
+        const snapshot = await allQuery.get();
+        
+        let results = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            completedAt: firestoreHelpers.timestampToDate(data.completedAt),
+            createdAt: firestoreHelpers.timestampToDate(data.createdAt)
+          } as IHabitLog;
+        });
+        
+        // Filter by date in memory
+        if (options?.startDate || options?.endDate) {
+          const start = options.startDate ? new Date(options.startDate).getTime() : 0;
+          const end = options.endDate ? new Date(options.endDate).getTime() : Number.MAX_SAFE_INTEGER;
+          results = results.filter(log => {
+            const logTime = log.completedAt.getTime();
+            return logTime >= start && logTime <= end;
+          });
+        }
+        
+        // Sort by date descending (newest first)
+        results.sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime());
+        
+        // Apply limit
+        if (options?.limit && options.limit > 0) {
+          return results.slice(0, options.limit);
+        }
+        
+        return results;
+      }
+      
+      // Re-throw if not an index error
+      throw error;
     }
-
-    if (options?.endDate) {
-      query = query.where('completedAt', '<=', firestoreHelpers.dateToTimestamp(options.endDate));
-    }
-
-    query = query.orderBy('completedAt', 'desc');
-
-    if (options?.limit) {
-      query = query.limit(options.limit);
-    }
-
-    const snapshot = await query.get();
-    
-    return snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        completedAt: firestoreHelpers.timestampToDate(data.completedAt),
-        createdAt: firestoreHelpers.timestampToDate(data.createdAt)
-      } as IHabitLog;
-    });
   }
 
   static async findByUserId(userId: string, options?: {
@@ -163,44 +271,107 @@ export class HabitLog {
     endDate?: Date;
     limit?: number;
   }): Promise<IHabitLog[]> {
-    let query = habitLogsCollection().where('userId', '==', userId);
+    try {
+      let query = habitLogsCollection().where('userId', '==', userId);
 
-    if (options?.startDate) {
-      query = query.where('completedAt', '>=', firestoreHelpers.dateToTimestamp(options.startDate));
+      // Build query based on what filters are provided
+      const hasStartDate = !!options?.startDate;
+      const hasEndDate = !!options?.endDate;
+      
+      // If we have date filters, use them with orderBy
+      // Firestore requires orderBy when using range queries (>= or <=)
+      // IMPORTANT: Only use ONE range operator in the query to avoid complex index requirements
+      // We'll filter the second range in memory
+      if (hasStartDate) {
+        // Use >= in query (most common case - getting logs from a start date forward)
+        query = query.where('completedAt', '>=', firestoreHelpers.dateToTimestamp(options.startDate!));
+        // Must use orderBy with range queries - use 'asc' to match expected index
+        query = query.orderBy('completedAt', 'asc');
+      } else if (hasEndDate && !hasStartDate) {
+        // Only endDate - use <= in query
+        query = query.where('completedAt', '<=', firestoreHelpers.dateToTimestamp(options.endDate!));
+        query = query.orderBy('completedAt', 'asc');
+      } else {
+        // No date filters - just order by date (descending for newest first)
+        query = query.orderBy('completedAt', 'desc');
+      }
+
+      const snapshot = await query.get();
+      
+      let results = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          completedAt: firestoreHelpers.timestampToDate(data.completedAt),
+          createdAt: firestoreHelpers.timestampToDate(data.createdAt)
+        } as IHabitLog;
+      });
+      
+      // If we used 'asc' for index compatibility, reverse to get newest first
+      if (hasStartDate || hasEndDate) {
+        results = results.reverse();
+      }
+      
+      // Apply date filters in memory as fallback (more reliable than query sometimes)
+      if (hasStartDate || hasEndDate) {
+        const start = options.startDate ? new Date(options.startDate).getTime() : 0;
+        const end = options.endDate ? new Date(options.endDate).getTime() : Number.MAX_SAFE_INTEGER;
+        results = results.filter(log => {
+          const logTime = log.completedAt.getTime();
+          return logTime >= start && logTime <= end;
+        });
+      }
+      
+      // Apply limit after filtering
+      if (options?.limit && options.limit > 0) {
+        return results.slice(0, options.limit);
+      }
+      
+      return results;
+    } catch (error: any) {
+      // If index error, fall back to fetching all and filtering in memory
+      if (error.code === 9 || error.code === 'FAILED_PRECONDITION') {
+        console.warn('⚠️ Firestore index missing for HabitLog.findByUserId - using fallback method');
+        
+        // Fallback: fetch all logs for user, filter in memory
+        const allQuery = habitLogsCollection().where('userId', '==', userId);
+        const snapshot = await allQuery.get();
+        
+        let results = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            completedAt: firestoreHelpers.timestampToDate(data.completedAt),
+            createdAt: firestoreHelpers.timestampToDate(data.createdAt)
+          } as IHabitLog;
+        });
+        
+        // Filter by date in memory
+        if (options?.startDate || options?.endDate) {
+          const start = options.startDate ? new Date(options.startDate).getTime() : 0;
+          const end = options.endDate ? new Date(options.endDate).getTime() : Number.MAX_SAFE_INTEGER;
+          results = results.filter(log => {
+            const logTime = log.completedAt.getTime();
+            return logTime >= start && logTime <= end;
+          });
+        }
+        
+        // Sort by date descending (newest first)
+        results.sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime());
+        
+        // Apply limit
+        if (options?.limit && options.limit > 0) {
+          return results.slice(0, options.limit);
+        }
+        
+        return results;
+      }
+      
+      // Re-throw if not an index error
+      throw error;
     }
-
-    if (options?.endDate) {
-      query = query.where('completedAt', '<=', firestoreHelpers.dateToTimestamp(options.endDate));
-    }
-
-    // Use 'asc' to match the index direction (userId ASC, completedAt ASC, __name__ ASC)
-    // For date range queries, we'll fetch all results and apply limit after reversing
-    // This ensures we get the newest items when limit is specified
-    query = query.orderBy('completedAt', 'asc');
-
-    // Don't apply limit in query - we need all results to reverse them properly
-    // We'll limit after reversing to get the newest items
-    const snapshot = await query.get();
-    
-    const results = snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        completedAt: firestoreHelpers.timestampToDate(data.completedAt),
-        createdAt: firestoreHelpers.timestampToDate(data.createdAt)
-      } as IHabitLog;
-    });
-    
-    // Reverse to get descending order (newest first) since we queried ascending to match index
-    const reversed = results.reverse();
-    
-    // Apply limit after reversing to get the newest N items
-    if (options?.limit && options.limit > 0) {
-      return reversed.slice(0, options.limit);
-    }
-    
-    return reversed;
   }
 
   static async findById(id: string): Promise<IHabitLog | null> {

@@ -88,44 +88,72 @@ export const getDashboardData = async (req: Request, res: Response) => {
   }
 };
 
-export const getWeeklyReport = async (req: Request, res: Response) => {
+const getPeriodReport = async (req: Request, res: Response, isMonthly: boolean = false) => {
   try {
     const userId = (req as any).user.id;
     const today = new Date();
-    const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() - today.getDay());
-    startOfWeek.setHours(0, 0, 0, 0);
+    let startDate: Date;
+    let endDate: Date;
     
-    const endOfWeek = new Date(startOfWeek);
-    endOfWeek.setDate(startOfWeek.getDate() + 7);
+    if (isMonthly) {
+      // Monthly report - current month
+      startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      endDate.setHours(23, 59, 59, 999);
+    } else {
+      // Weekly report - current week
+      startDate = new Date(today);
+      startDate.setDate(today.getDate() - today.getDay());
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + 7);
+    }
 
-    // Get weekly time entries
-    const weeklyTimeEntries = await TimeEntry.findByUserId(userId, {
-      startDate: startOfWeek,
-      endDate: endOfWeek
+    // Get period time entries
+    const periodTimeEntries = await TimeEntry.findByUserId(userId, {
+      startDate: startDate,
+      endDate: endDate
     });
 
-    // Get weekly habit logs
-    const weeklyHabitLogs = await HabitLog.findByUserId(userId, {
-      startDate: startOfWeek,
-      endDate: endOfWeek
+    // Get period habit logs
+    const periodHabitLogs = await HabitLog.findByUserId(userId, {
+      startDate: startDate,
+      endDate: endDate
     });
 
-    // Get weekly expenses
-    const weeklyExpenses = await Expense.findByUserId(userId, {
-      startDate: startOfWeek,
-      endDate: endOfWeek
+    // Get period expenses
+    const periodExpenses = await Expense.findByUserId(userId, {
+      startDate: startDate,
+      endDate: endDate
     });
+
+    // Get habits for streaks
+    const habits = await Habit.findByUserId(userId, true);
+
+    // Calculate productive vs wasted time
+    const productiveTime = periodTimeEntries
+      .filter(entry => entry.isProductive)
+      .reduce((sum, entry) => sum + (entry.duration || 0), 0);
+    
+    const wastedTime = periodTimeEntries
+      .filter(entry => !entry.isProductive)
+      .reduce((sum, entry) => sum + (entry.duration || 0), 0);
+    
+    const totalTime = productiveTime + wastedTime;
 
     // Calculate daily breakdowns
     const dailyTimeBreakdown: { [date: string]: number } = {};
     const dailyHabitBreakdown: { [date: string]: number } = {};
     const dailyExpenseBreakdown: { [date: string]: number } = {};
 
-    // Initialize all days
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(startOfWeek);
-      date.setDate(startOfWeek.getDate() + i);
+    // Initialize all days in period
+    const daysInPeriod = isMonthly ? 31 : 7;
+    for (let i = 0; i < daysInPeriod; i++) {
+      const date = new Date(startDate);
+      date.setDate(startDate.getDate() + i);
+      // Stop if beyond end date
+      if (date > endDate) break;
       const dateKey = date.toISOString().split('T')[0];
       dailyTimeBreakdown[dateKey] = 0;
       dailyHabitBreakdown[dateKey] = 0;
@@ -133,18 +161,21 @@ export const getWeeklyReport = async (req: Request, res: Response) => {
     }
 
     // Fill in actual data
-    weeklyTimeEntries.forEach(entry => {
+    periodTimeEntries.forEach(entry => {
       const dateKey = entry.startTime.toISOString().split('T')[0];
+      if (!dailyTimeBreakdown[dateKey]) dailyTimeBreakdown[dateKey] = 0;
       dailyTimeBreakdown[dateKey] += entry.duration || 0;
     });
 
-    weeklyHabitLogs.forEach(log => {
+    periodHabitLogs.forEach(log => {
       const dateKey = log.completedAt.toISOString().split('T')[0];
+      if (!dailyHabitBreakdown[dateKey]) dailyHabitBreakdown[dateKey] = 0;
       dailyHabitBreakdown[dateKey] += 1;
     });
 
-    weeklyExpenses.forEach(expense => {
+    periodExpenses.forEach(expense => {
       const dateKey = expense.date.toISOString().split('T')[0];
+      if (!dailyExpenseBreakdown[dateKey]) dailyExpenseBreakdown[dateKey] = 0;
       dailyExpenseBreakdown[dateKey] += expense.amount;
     });
 
@@ -152,28 +183,65 @@ export const getWeeklyReport = async (req: Request, res: Response) => {
     const timeCategoryBreakdown: { [category: string]: number } = {};
     const expenseCategoryBreakdown: { [category: string]: number } = {};
 
-    weeklyTimeEntries.forEach(entry => {
+    periodTimeEntries.forEach(entry => {
       timeCategoryBreakdown[entry.category] = (timeCategoryBreakdown[entry.category] || 0) + (entry.duration || 0);
     });
 
-    weeklyExpenses.forEach(expense => {
+    periodExpenses.forEach(expense => {
       expenseCategoryBreakdown[expense.category] = (expenseCategoryBreakdown[expense.category] || 0) + expense.amount;
     });
+
+    // Prepare habit streaks data
+    const habitStreaks = habits.map(habit => ({
+      id: habit.id,
+      name: habit.name,
+      currentStreak: habit.currentStreak,
+      longestStreak: habit.longestStreak,
+      targetCount: habit.targetCount
+    }));
+
+    const totalExpenses = periodExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+    const completedLogs = periodHabitLogs.length;
+
+    const reportType = isMonthly ? 'monthlyReport' : 'weeklyReport';
 
     return res.status(200).json({
       success: true,
       data: {
-        weeklyReport: {
-          startDate: startOfWeek,
-          endDate: endOfWeek,
-          dailyTimeBreakdown,
-          dailyHabitBreakdown,
-          dailyExpenseBreakdown,
-          timeCategoryBreakdown,
-          expenseCategoryBreakdown,
-          totalTime: Object.values(dailyTimeBreakdown).reduce((sum, time) => sum + time, 0),
-          totalHabits: Object.values(dailyHabitBreakdown).reduce((sum, habits) => sum + habits, 0),
-          totalExpenses: Object.values(dailyExpenseBreakdown).reduce((sum, expenses) => sum + expenses, 0)
+        [reportType]: {
+          period: isMonthly ? 'monthly' : 'weekly',
+          // Time data
+          time: {
+            total: totalTime,
+            productive: productiveTime,
+            wasted: wastedTime,
+            dailyBreakdown: dailyTimeBreakdown,
+            categoryBreakdown: timeCategoryBreakdown
+          },
+          // Habits data
+          habits: {
+            totalHabits: habits.length,
+            completedLogs: completedLogs,
+            streaks: habitStreaks,
+            dailyBreakdown: dailyHabitBreakdown
+          },
+          // Expenses data
+          expenses: {
+            total: totalExpenses,
+            categoryBreakdown: expenseCategoryBreakdown,
+            dailyBreakdown: dailyExpenseBreakdown
+          },
+          // Raw data for compatibility
+          startDate: startDate,
+          endDate: endDate,
+          dailyTimeBreakdown: dailyTimeBreakdown,
+          dailyHabitBreakdown: dailyHabitBreakdown,
+          dailyExpenseBreakdown: dailyExpenseBreakdown,
+          timeCategoryBreakdown: timeCategoryBreakdown,
+          expenseCategoryBreakdown: expenseCategoryBreakdown,
+          totalTime: totalTime,
+          totalHabits: completedLogs,
+          totalExpenses: totalExpenses
         }
       }
     });
@@ -193,10 +261,12 @@ export const getWeeklyReport = async (req: Request, res: Response) => {
       
       console.warn('⚠️ Firestore index error detected. If indexes are enabled, try restarting the backend server.');
       
+      const reportType = isMonthly ? 'monthlyReport' : 'weeklyReport';
       return res.status(200).json({
         success: true,
         data: {
-          weeklyReport: {
+          [reportType]: {
+            period: isMonthly ? 'monthly' : 'weekly',
             startDate: null,
             endDate: null,
             dailyTimeBreakdown: {},
@@ -215,10 +285,26 @@ export const getWeeklyReport = async (req: Request, res: Response) => {
     }
     return res.status(500).json({
       success: false,
-      message: 'Failed to get weekly report',
+      message: `Failed to get ${isMonthly ? 'monthly' : 'weekly'} report`,
       error: details || err?.message
     });
+  } catch (error) {
+    console.error(`Get ${isMonthly ? 'monthly' : 'weekly'} report error:`, error);
+    const err: any = error;
+    return res.status(500).json({
+      success: false,
+      message: `Failed to get ${isMonthly ? 'monthly' : 'weekly'} report`,
+      error: err?.message
+    });
   }
+};
+
+export const getWeeklyReport = async (req: Request, res: Response) => {
+  return getPeriodReport(req, res, false);
+};
+
+export const getMonthlyReport = async (req: Request, res: Response) => {
+  return getPeriodReport(req, res, true);
 };
 
 export const getInsights = async (req: Request, res: Response) => {
@@ -279,18 +365,245 @@ export const getInsights = async (req: Request, res: Response) => {
       }, {} as { [key: string]: number })
     ).sort(([,a], [,b]) => b - a)[0];
 
+    // Get habits for better analysis
+    const habits = await Habit.findByUserId(userId, true);
+    
+    // Calculate habit completion rates (with target count support)
+    const habitStats = habits.map(habit => {
+      const habitLogsCount = habitLogs.filter(log => log.habitId === habit.id).length;
+      const expectedCompletions = habit.targetCount * 30; // 30 days * target per day
+      const completionRate = expectedCompletions > 0 ? (habitLogsCount / expectedCompletions) * 100 : 0;
+      return {
+        habit,
+        logsCount: habitLogsCount,
+        completionRate,
+        streak: habit.currentStreak
+      };
+    });
+
+    // Calculate productivity insights
+    const productivityRatio = totalProductiveTime + totalWastedTime > 0 
+      ? (totalProductiveTime / (totalProductiveTime + totalWastedTime)) * 100 
+      : 0;
+    
+    const totalTime = totalProductiveTime + totalWastedTime;
+    const averageDailyTimeMinutes = averageDailyTime;
+    const averageDailyHours = averageDailyTimeMinutes / 60;
+
+    // Calculate expense trends
+    const expensesByDate = expenses.reduce((acc, exp) => {
+      const dateKey = exp.date.toISOString().split('T')[0];
+      if (!acc[dateKey]) acc[dateKey] = [];
+      acc[dateKey].push(exp);
+      return acc;
+    }, {} as { [key: string]: typeof expenses });
+
+    const dailyExpenseAmounts = Object.values(expensesByDate).map(dayExps => 
+      dayExps.reduce((sum, exp) => sum + exp.amount, 0)
+    );
+    const expenseTrend = dailyExpenseAmounts.length > 1 
+      ? dailyExpenseAmounts.slice(-7).reduce((sum, amt) => sum + amt, 0) / 7 - 
+        dailyExpenseAmounts.slice(0, 7).reduce((sum, amt) => sum + amt, 0) / 7
+      : 0;
+
+    // Generate actionable insights
+    const recommendations: Array<{
+      type: 'positive' | 'warning' | 'negative' | 'recommendation';
+      category: 'productivity' | 'habits' | 'expenses' | 'overall';
+      title: string;
+      message: string;
+      priority: number; // Higher = more important
+    }> = [];
+
+    // Productivity insights
+    if (productivityRatio >= 70) {
+      recommendations.push({
+        type: 'positive',
+        category: 'productivity',
+        title: 'Excellent Productivity!',
+        message: `You're maintaining a ${Math.round(productivityRatio)}% productivity ratio. You're spending more time on productive activities than distractions.`,
+        priority: 8
+      });
+    } else if (productivityRatio >= 50) {
+      recommendations.push({
+        type: 'warning',
+        category: 'productivity',
+        title: 'Productivity Could Be Better',
+        message: `Your productivity is at ${Math.round(productivityRatio)}%. Try to reduce wasted time and focus more on productive activities.`,
+        priority: 7
+      });
+    } else if (productivityRatio > 0) {
+      recommendations.push({
+        type: 'negative',
+        category: 'productivity',
+        title: 'Low Productivity Detected',
+        message: `Only ${Math.round(productivityRatio)}% of your tracked time is productive. Consider limiting distractions and focusing on meaningful work.`,
+        priority: 9
+      });
+    }
+
+    if (totalWastedTime > totalProductiveTime && totalTime > 0) {
+      const wastedHours = Math.round(totalWastedTime / 60);
+      recommendations.push({
+        type: 'negative',
+        category: 'productivity',
+        title: 'High Wasted Time',
+        message: `You've spent ${wastedHours} hours on non-productive activities. Try to minimize distractions and set specific goals for each day.`,
+        priority: 8
+      });
+    }
+
+    if (averageDailyHours < 2 && totalTime > 0) {
+      recommendations.push({
+        type: 'recommendation',
+        category: 'productivity',
+        title: 'Track More Time',
+        message: `You're only tracking ${Math.round(averageDailyHours * 10) / 10} hours per day on average. Track more activities to get better insights.`,
+        priority: 5
+      });
+    }
+
+    // Habit insights
+    const avgCompletionRate = habitStats.length > 0
+      ? habitStats.reduce((sum, stat) => sum + stat.completionRate, 0) / habitStats.length
+      : 0;
+
+    if (avgCompletionRate >= 80 && habits.length > 0) {
+      recommendations.push({
+        type: 'positive',
+        category: 'habits',
+        title: 'Great Habit Consistency!',
+        message: `You're completing ${Math.round(avgCompletionRate)}% of your habit targets. You're building strong routines!`,
+        priority: 8
+      });
+    } else if (avgCompletionRate < 50 && habits.length > 0) {
+      recommendations.push({
+        type: 'negative',
+        category: 'habits',
+        title: 'Low Habit Completion Rate',
+        message: `You're only completing ${Math.round(avgCompletionRate)}% of your habit targets. Try setting smaller, more achievable targets to build momentum.`,
+        priority: 9
+      });
+    }
+
+    const topStreakHabit = habitStats.sort((a, b) => b.streak - a.streak)[0];
+    if (topStreakHabit && topStreakHabit.streak >= 7) {
+      recommendations.push({
+        type: 'positive',
+        category: 'habits',
+        title: '🔥 Amazing Streak!',
+        message: `You've maintained a ${topStreakHabit.streak}-day streak on "${topStreakHabit.habit.name}". Keep it going!`,
+        priority: 7
+      });
+    }
+
+    const strugglingHabits = habitStats.filter(s => s.completionRate < 30 && s.habit.isActive);
+    if (strugglingHabits.length > 0) {
+      recommendations.push({
+        type: 'warning',
+        category: 'habits',
+        title: 'Habits Need Attention',
+        message: `${strugglingHabits.length} habit${strugglingHabits.length > 1 ? 's' : ''} ${strugglingHabits.length > 1 ? 'are' : 'is'} struggling (${strugglingHabits.map(h => h.habit.name).join(', ')}). Consider reducing their target count or focusing on one at a time.`,
+        priority: 6
+      });
+    }
+
+    if (habits.length === 0) {
+      recommendations.push({
+        type: 'recommendation',
+        category: 'habits',
+        title: 'Start Building Habits',
+        message: `You don't have any habits yet. Create your first habit to start building consistency and achieving your goals!`,
+        priority: 7
+      });
+    }
+
+    // Expense insights
+    const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+    const avgDailyExpense = averageDailyExpenses;
+
+    if (expenseTrend > 0 && Math.abs(expenseTrend) > avgDailyExpense * 0.2) {
+      recommendations.push({
+        type: 'warning',
+        category: 'expenses',
+        title: 'Spending Trend Increasing',
+        message: `Your spending has increased recently. Review your expenses and identify areas where you can cut back.`,
+        priority: 7
+      });
+    }
+
+    if (topExpenseCategory && topExpenseCategory[1] > totalExpenses * 0.4) {
+      recommendations.push({
+        type: 'warning',
+        category: 'expenses',
+        title: 'High Spending Concentration',
+        message: `${topExpenseCategory[0]} accounts for ${Math.round((topExpenseCategory[1] / totalExpenses) * 100)}% of your spending. Consider if this aligns with your priorities.`,
+        priority: 6
+      });
+    }
+
+    if (avgDailyExpense > 0 && expenses.length > 7) {
+      const weeklyAverage = avgDailyExpense * 7;
+      recommendations.push({
+        type: 'recommendation',
+        category: 'expenses',
+        title: 'Weekly Spending Overview',
+        message: `You're spending an average of ₹${Math.round(avgDailyExpense)} per day (₹${Math.round(weeklyAverage)}/week). Set a weekly budget to stay on track.`,
+        priority: 5
+      });
+    }
+
+    // Overall balance insights
+    const hasTimeTracking = totalTime > 0;
+    const hasHabits = habits.length > 0;
+    const hasExpenses = expenses.length > 0;
+
+    if (hasTimeTracking && hasHabits && hasExpenses) {
+      if (productivityRatio >= 60 && avgCompletionRate >= 70 && expenseTrend <= 0) {
+        recommendations.push({
+          type: 'positive',
+          category: 'overall',
+          title: '🌟 Well-Balanced Lifestyle!',
+          message: `You're maintaining high productivity, consistent habits, and controlled spending. You're on the right track!`,
+          priority: 9
+        });
+      }
+    }
+
+    if (hasTimeTracking && !hasHabits) {
+      recommendations.push({
+        type: 'recommendation',
+        category: 'overall',
+        title: 'Add Habits for Better Tracking',
+        message: `You're tracking time but not habits. Add habits to build consistency and achieve your goals faster.`,
+        priority: 6
+      });
+    }
+
+    if (!hasTimeTracking && hasHabits) {
+      recommendations.push({
+        type: 'recommendation',
+        category: 'overall',
+        title: 'Start Time Tracking',
+        message: `You have habits but aren't tracking time. Start tracking time to see how you spend your days and improve productivity.`,
+        priority: 6
+      });
+    }
+
+    // Sort recommendations by priority (highest first)
+    recommendations.sort((a, b) => b.priority - a.priority);
+
     const insights = {
       productivity: {
         totalProductiveTime,
         totalWastedTime,
-        productivityRatio: totalProductiveTime + totalWastedTime > 0 
-          ? (totalProductiveTime / (totalProductiveTime + totalWastedTime)) * 100 
-          : 0,
+        productivityRatio,
         averageDailyTime,
         mostProductiveCategory: mostProductiveCategory ? {
           category: mostProductiveCategory[0],
           time: mostProductiveCategory[1]
-        } : null
+        } : null,
+        totalTime
       },
       expenses: {
         averageDailyExpenses,
@@ -298,12 +611,22 @@ export const getInsights = async (req: Request, res: Response) => {
           category: topExpenseCategory[0],
           amount: topExpenseCategory[1]
         } : null,
-        totalExpenses: expenses.reduce((sum, expense) => sum + expense.amount, 0)
+        totalExpenses,
+        expenseTrend,
+        expensePercentage: topExpenseCategory && totalExpenses > 0 
+          ? (topExpenseCategory[1] / totalExpenses) * 100 
+          : 0
       },
       habits: {
         totalHabitCompletions: habitLogs.length,
-        averageDailyHabits: habitLogs.length / 30
-      }
+        averageDailyHabits: habitLogs.length / 30,
+        averageCompletionRate: avgCompletionRate,
+        totalHabits: habits.length,
+        activeHabits: habits.filter(h => h.isActive).length,
+        topStreak: topStreakHabit ? topStreakHabit.streak : 0,
+        strugglingHabitsCount: strugglingHabits.length
+      },
+      recommendations // Add recommendations array
     };
 
     return res.status(200).json({
