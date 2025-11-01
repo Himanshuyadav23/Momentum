@@ -123,7 +123,7 @@ export const getFirebaseGoogleProvider = () => getGoogleProviderInstance();
 
 // Export Proxy objects for property access and backward compatibility
 // However, for Firebase functions like signInWithPopup, use getFirebaseAuth() instead
-export const auth: Auth = new Proxy({} as Auth, {
+const authProxy = new Proxy({} as Record<string, any>, {
   get(_target, prop) {
     // If accessing 'getRealInstance' property, return the actual instance
     if (prop === 'getRealInstance') {
@@ -156,9 +156,11 @@ export const auth: Auth = new Proxy({} as Auth, {
     const instance = getAuthInstance();
     return Object.getPrototypeOf(instance);
   }
-} as Auth);
+});
 
-export const googleProvider: GoogleAuthProvider = new Proxy({} as GoogleAuthProvider, {
+export const auth: Auth = authProxy as unknown as Auth;
+
+const googleProviderProxy = new Proxy({} as Record<string, any>, {
   get(_target, prop) {
     // If accessing 'getRealInstance' property, return the actual instance
     if (prop === 'getRealInstance') {
@@ -183,5 +185,7 @@ export const googleProvider: GoogleAuthProvider = new Proxy({} as GoogleAuthProv
     const instance = getGoogleProviderInstance();
     return Object.getPrototypeOf(instance);
   }
-} as GoogleAuthProvider);
+});
+
+export const googleProvider: GoogleAuthProvider = googleProviderProxy as unknown as GoogleAuthProvider;
 export default app;
