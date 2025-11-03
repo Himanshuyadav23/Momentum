@@ -45,9 +45,16 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// CORS configuration - allow localhost on any port in development
+// CORS configuration
+// - Allow localhost in development
+// - Allow Vercel preview/prod domains in production
+// - If running on Vercel serverless, allow same-origin by default
+const vercelUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined;
 const allowedOrigins = process.env.NODE_ENV === 'production'
-  ? [process.env.FRONTEND_URL || 'http://localhost:3000']
+  ? [
+      process.env.FRONTEND_URL || 'http://localhost:3000',
+      vercelUrl
+    ].filter(Boolean)
   : [
       'http://localhost:3000',
       'http://localhost:3001',
@@ -58,15 +65,18 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl requests) in development
+    // In Vercel serverless, allow whatever origin called this API (same-origin calls)
+    if (process.env.VERCEL) {
+      return callback(null, true);
+    }
+    // Allow requests with no origin (like curl) in development
     if (!origin && process.env.NODE_ENV !== 'production') {
       return callback(null, true);
     }
     if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+      return callback(null, true);
     }
+    return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
 }));
