@@ -23,7 +23,7 @@ import { notFound } from './middleware/notFound';
 
 // Environment loaded via ./loadEnv
 
-const app = express();
+export const app = express();
 const PORT = parseInt(process.env.PORT || '5000', 10);
 
 // Security middleware
@@ -432,25 +432,28 @@ process.on('SIGINT', () => {
   }
 });
 
-// Start the server with error recovery
-startServer().catch((error) => {
-  console.error('❌ Fatal error starting server:', error);
-  // ALWAYS retry - never give up
-  console.log('🔄 Will retry in 5 seconds...');
-  isStarting = false;
-  
-  // Clear any existing retry timeout
-  if (retryTimeout) {
-    clearTimeout(retryTimeout);
-  }
-  
-  retryTimeout = setTimeout(() => {
-    startServer();
-  }, 5000);
-});
+// Only start server if not in serverless environment (Vercel)
+// Vercel provides VERCEL environment variable when running as serverless function
+if (!process.env.VERCEL) {
+  // Start the server with error recovery
+  startServer().catch((error) => {
+    console.error('❌ Fatal error starting server:', error);
+    // ALWAYS retry - never give up
+    console.log('🔄 Will retry in 5 seconds...');
+    isStarting = false;
+    
+    // Clear any existing retry timeout
+    if (retryTimeout) {
+      clearTimeout(retryTimeout);
+    }
+    
+    retryTimeout = setTimeout(() => {
+      startServer();
+    }, 5000);
+  });
 
-// Keep process alive and monitor health
-const keepAlive = () => {
+  // Keep process alive and monitor health
+  const keepAlive = () => {
   let lastHeartbeat = 0;
   
   // Periodic health check and status logging (less aggressive - every 30 seconds)
@@ -493,7 +496,7 @@ const keepAlive = () => {
       clearTimeout(retryTimeout);
       retryTimeout = null;
     }
-  });
-};
+  };
 
-keepAlive();
+  keepAlive();
+}

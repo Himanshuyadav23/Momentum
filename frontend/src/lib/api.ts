@@ -1,4 +1,7 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+// In Vercel, API routes are on the same domain, so use relative path
+// In development or if explicit URL is set, use that
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 
+  (typeof window !== 'undefined' ? '/api' : 'http://localhost:5000/api');
 
 export interface ApiResponse<T = any> {
   success: boolean;
