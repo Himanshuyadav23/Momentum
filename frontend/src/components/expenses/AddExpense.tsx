@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiClient } from '@/lib/api';
-import { Plus, DollarSign } from 'lucide-react';
+import { Plus, DollarSign, AlertTriangle } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface AddExpenseProps {
   onExpenseAdded?: () => void;
@@ -42,7 +43,9 @@ const CURRENCIES = [
 ];
 
 export const AddExpense: React.FC<AddExpenseProps> = ({ onExpenseAdded }) => {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [budgetWarning, setBudgetWarning] = useState<{ message: string; wouldExceed: boolean } | null>(null);
   const [formData, setFormData] = useState({
     amount: '',
     currency: 'INR', // Default to INR
@@ -50,6 +53,80 @@ export const AddExpense: React.FC<AddExpenseProps> = ({ onExpenseAdded }) => {
     description: '',
     date: ''
   });
+
+  // Check budget when amount or date changes
+  React.useEffect(() => {
+    checkBudget();
+  }, [formData.amount, formData.date, user?.weeklyBudget]);
+
+  const checkBudget = async () => {
+    if (!formData.amount || !user?.weeklyBudget) {
+      setBudgetWarning(null);
+      return;
+    }
+
+    const amount = parseFloat(formData.amount);
+    if (isNaN(amount) || amount <= 0) {
+      setBudgetWarning(null);
+      return;
+    }
+
+    // Check if the expense date is in the current week
+    const expenseDate = formData.date ? new Date(formData.date) : new Date();
+    const today = new Date();
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - today.getDay());
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 7);
+
+    // Only check budget if expense is in current week
+    if (expenseDate >= weekStart && expenseDate < weekEnd) {
+      try {
+        const startDate = weekStart.toISOString();
+        const endDate = new Date().toISOString();
+
+        const response = await apiClient.getExpenseSummary({
+          startDate,
+          endDate
+        });
+
+        if (response.success && response.data) {
+          const responseData = response.data as any;
+          const insightsData = responseData.stats || responseData;
+          const currentWeekSpending = insightsData.totalAmount || 0;
+          const newTotal = currentWeekSpending + amount;
+
+          if (newTotal > user.weeklyBudget) {
+            const overAmount = newTotal - user.weeklyBudget;
+            setBudgetWarning({
+              message: `Adding this expense will exceed your weekly budget by ${formatCurrency(overAmount)}.`,
+              wouldExceed: true
+            });
+          } else if (newTotal > user.weeklyBudget * 0.8) {
+            const remaining = user.weeklyBudget - newTotal;
+            setBudgetWarning({
+              message: `Adding this expense will use ${((newTotal / user.weeklyBudget) * 100).toFixed(1)}% of your weekly budget. Only ${formatCurrency(remaining)} remaining.`,
+              wouldExceed: false
+            });
+          } else {
+            setBudgetWarning(null);
+          }
+        }
+      } catch (error) {
+        // Silently fail budget check
+        console.error('Budget check error:', error);
+      }
+    } else {
+      setBudgetWarning(null);
+    }
+  };
+
+  const formatCurrency = (amount: number) => {
+    const currency = formData.currency || 'INR';
+    const symbol = CURRENCIES.find(c => c.code === currency)?.symbol || '₹';
+    return `${symbol}${amount.toFixed(2)}`;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,6 +140,16 @@ export const AddExpense: React.FC<AddExpenseProps> = ({ onExpenseAdded }) => {
     if (isNaN(amount) || amount <= 0) {
       alert('Please enter a valid amount');
       return;
+    }
+
+    // Show confirmation if budget would be exceeded
+    if (budgetWarning?.wouldExceed) {
+      const confirmed = window.confirm(
+        `⚠️ Warning: This expense will exceed your weekly budget!\n\n${budgetWarning.message}\n\nDo you still want to add this expense?`
+      );
+      if (!confirmed) {
+        return;
+      }
     }
 
     try {
@@ -84,6 +171,7 @@ export const AddExpense: React.FC<AddExpenseProps> = ({ onExpenseAdded }) => {
           description: '',
           date: ''
         });
+        setBudgetWarning(null);
         onExpenseAdded?.();
       } else {
         throw new Error(response.message || 'Failed to add expense');
@@ -192,6 +280,26 @@ export const AddExpense: React.FC<AddExpenseProps> = ({ onExpenseAdded }) => {
               className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
             />
           </div>
+
+          {/* Budget Warning */}
+          {budgetWarning && (
+            <div className={`p-3 rounded-lg border ${
+              budgetWarning.wouldExceed
+                ? 'bg-red-900/30 border-red-500'
+                : 'bg-yellow-900/30 border-yellow-500'
+            }`}>
+              <div className="flex items-start space-x-2">
+                <AlertTriangle className={`h-4 w-4 flex-shrink-0 mt-0.5 ${
+                  budgetWarning.wouldExceed ? 'text-red-400' : 'text-yellow-400'
+                }`} />
+                <p className={`text-sm ${
+                  budgetWarning.wouldExceed ? 'text-red-200' : 'text-yellow-200'
+                }`}>
+                  {budgetWarning.message}
+                </p>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="date" className="text-gray-300">Date</Label>

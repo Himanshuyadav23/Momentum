@@ -45,65 +45,23 @@ export const HabitList: React.FC<HabitListProps> = ({ refreshTrigger = 0 }) => {
   const fetchHabits = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.getHabits();
+      // Use optimized endpoint that includes completion status in single call
+      const response = await apiClient.getHabits(true); // includeCompletion = true
       if (response.success && response.data) {
         const d: any = response.data;
-        const list: Habit[] = Array.isArray(d?.habits)
-          ? d.habits
+        const list: HabitWithCompletion[] = Array.isArray(d?.habits)
+          ? d.habits.map((h: any) => ({
+              ...h,
+              completedToday: h.completedToday || false,
+              todayCompletionCount: h.todayCompletionCount || 0,
+              todayLogId: h.todayLogId,
+              recentCompletions: h.recentCompletions || 0
+            }))
           : Array.isArray(d)
             ? d
             : [];
         
-        // Check which habits are completed today
-        const habitsWithCompletion = await Promise.all(
-          list.map(async (habit) => {
-            const today = new Date();
-            const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-            const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-            
-            try {
-              const logsResponse = await apiClient.getHabitLogs(habit.id, {
-                startDate: startOfDay.toISOString(),
-                endDate: endOfDay.toISOString()
-              });
-              
-              const logsData = logsResponse.data as any;
-              const todayLogs = logsResponse.success && logsData?.habitLogs 
-                ? logsData.habitLogs 
-                : [];
-              
-              // Get last 7 days completions for visualization
-              const weekAgo = new Date(today);
-              weekAgo.setDate(weekAgo.getDate() - 7);
-              
-              const weekLogsResponse = await apiClient.getHabitLogs(habit.id, {
-                startDate: weekAgo.toISOString(),
-                endDate: endOfDay.toISOString()
-              });
-              
-              const weekLogsData = weekLogsResponse.data as any;
-              const weekLogs = weekLogsResponse.success && weekLogsData?.habitLogs 
-                ? weekLogsData.habitLogs 
-                : [];
-              
-              const todayCount = todayLogs.length;
-              const isTargetMet = todayCount >= habit.targetCount;
-              
-              return {
-                ...habit,
-                completedToday: isTargetMet,
-                todayCompletionCount: todayCount,
-                todayLogId: todayLogs.length > 0 ? todayLogs[0].id : undefined,
-                recentCompletions: weekLogs.length
-              } as HabitWithCompletion;
-            } catch (error) {
-              console.error(`Error checking completion for habit ${habit.id}:`, error);
-              return { ...habit, completedToday: false, recentCompletions: 0 } as HabitWithCompletion;
-            }
-          })
-        );
-        
-        setHabits(habitsWithCompletion);
+        setHabits(list);
       }
     } catch (error) {
       console.error('Failed to fetch habits:', error);

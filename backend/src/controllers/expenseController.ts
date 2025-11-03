@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { Expense } from '../models/Expense';
+import { User } from '../models/User';
 
 export const createExpense = async (req: Request, res: Response) => {
   try {
@@ -168,9 +169,44 @@ export const getExpenseStats = async (req: Request, res: Response) => {
 
     const stats = await Expense.getExpenseStats(userId, start, end);
 
+    // Get user's weekly budget if checking weekly expenses
+    let budgetInfo = null;
+    const user = await User.findById(userId);
+    if (user?.weeklyBudget) {
+      // Check if this is a weekly range
+      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysDiff <= 7) {
+        // Calculate current week's start date for comparison
+        const today = new Date();
+        const weekStart = new Date(today);
+        weekStart.setDate(today.getDate() - today.getDay());
+        weekStart.setHours(0, 0, 0, 0);
+        
+        // Check if the date range matches current week
+        const startTime = start.getTime();
+        const weekStartTime = weekStart.getTime();
+        const dayDiff = Math.floor((startTime - weekStartTime) / (1000 * 60 * 60 * 24));
+        
+        if (dayDiff >= 0 && dayDiff < 7) {
+          // This is the current week
+          budgetInfo = {
+            weeklyBudget: user.weeklyBudget,
+            currentWeekSpending: stats.totalAmount,
+            percentageUsed: (stats.totalAmount / user.weeklyBudget) * 100,
+            isOverBudget: stats.totalAmount > user.weeklyBudget,
+            remainingBudget: Math.max(0, user.weeklyBudget - stats.totalAmount),
+            overBudgetAmount: Math.max(0, stats.totalAmount - user.weeklyBudget)
+          };
+        }
+      }
+    }
+
     return res.status(200).json({
       success: true,
-      data: stats // Return stats directly, not wrapped in { stats }
+      data: {
+        ...stats,
+        budgetInfo // Add budget info to the response
+      }
     });
   } catch (error) {
     console.error('Get expense stats error:', error);
@@ -187,7 +223,8 @@ export const getExpenseStats = async (req: Request, res: Response) => {
           expenseCount: 0,
           categoryBreakdown: {},
           dailyBreakdown: {},
-          averageDaily: 0
+          averageDaily: 0,
+          budgetInfo: null
         },
         message: 'Missing Firestore index; returning empty expense stats.',
         error: indexUrl ? `Create index: ${indexUrl}` : 'Create the required Firestore composite index.'

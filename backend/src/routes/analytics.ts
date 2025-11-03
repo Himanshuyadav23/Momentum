@@ -1,5 +1,5 @@
 import express from 'express';
-import { getDashboardData, getWeeklyReport, getMonthlyReport, getInsights } from '../controllers/analyticsController';
+import { getDashboardData, getWeeklyReport, getMonthlyReport, getInsights, getActivityHeatmap } from '../controllers/analyticsController';
 import { authenticate as authMiddleware } from '../middleware/auth';
 import { asyncHandler } from '../middleware/asyncHandler';
 
@@ -19,5 +19,8 @@ router.get('/monthly', asyncHandler(getMonthlyReport));
 
 // GET /api/analytics/insights
 router.get('/insights', asyncHandler(getInsights));
+
+// GET /api/analytics/heatmap
+router.get('/heatmap', asyncHandler(getActivityHeatmap));
 
 export default router;

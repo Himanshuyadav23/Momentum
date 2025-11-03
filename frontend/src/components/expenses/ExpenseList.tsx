@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { apiClient } from '@/lib/api';
-import { DollarSign, Calendar, Filter, Trash2, Edit, Search, Download, ArrowUpDown } from 'lucide-react';
+import { DollarSign, Calendar, Filter, Trash2, Edit, Search, Download, ArrowUpDown, AlertTriangle, AlertCircle, X } from 'lucide-react';
 
 interface Expense {
   id: string;
@@ -43,10 +43,43 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ refreshTrigger = 0 }) 
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'date' | 'amount' | 'category'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [budgetInfo, setBudgetInfo] = useState<any>(null);
+  const [showBudgetAlert, setShowBudgetAlert] = useState(true);
 
   useEffect(() => {
     fetchExpenses();
+    fetchBudgetInfo();
   }, [dateRange, refreshTrigger]);
+
+  const fetchBudgetInfo = async () => {
+    if (dateRange !== 'week') {
+      setBudgetInfo(null);
+      return;
+    }
+    
+    try {
+      const startDate = getStartDate('week');
+      const endDate = new Date().toISOString();
+
+      const response = await apiClient.getExpenseSummary({
+        startDate,
+        endDate
+      });
+
+      if (response.success && response.data) {
+        const responseData = response.data as any;
+        const insightsData = responseData.stats || responseData;
+        if (insightsData.budgetInfo) {
+          setBudgetInfo(insightsData.budgetInfo);
+        } else {
+          setBudgetInfo(null);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch budget info:', error);
+      setBudgetInfo(null);
+    }
+  };
 
   const fetchExpenses = async () => {
     try {
@@ -253,6 +286,48 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ refreshTrigger = 0 }) 
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Budget Alert Banner - Show when viewing weekly expenses and budget is exceeded or close */}
+        {dateRange === 'week' && budgetInfo && showBudgetAlert && (budgetInfo.isOverBudget || budgetInfo.percentageUsed >= 80) && (
+          <div className={`p-4 rounded-lg border-2 ${
+            budgetInfo.isOverBudget
+              ? 'bg-red-900/40 border-red-500'
+              : 'bg-yellow-900/40 border-yellow-500'
+          }`}>
+            <div className="flex items-start justify-between">
+              <div className="flex items-start space-x-3 flex-1">
+                {budgetInfo.isOverBudget ? (
+                  <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
+                ) : (
+                  <AlertTriangle className="h-5 w-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                )}
+                <div className="flex-1">
+                  <div className="flex items-center space-x-2 mb-1">
+                    <h4 className={`font-semibold ${
+                      budgetInfo.isOverBudget ? 'text-red-300' : 'text-yellow-300'
+                    }`}>
+                      {budgetInfo.isOverBudget ? 'Budget Exceeded!' : 'Budget Warning'}
+                    </h4>
+                  </div>
+                  <p className={`text-sm ${
+                    budgetInfo.isOverBudget ? 'text-red-200' : 'text-yellow-200'
+                  }`}>
+                    {budgetInfo.isOverBudget 
+                      ? `You've spent ${formatCurrency(budgetInfo.currentWeekSpending, 'INR')}, exceeding your weekly budget of ${formatCurrency(budgetInfo.weeklyBudget, 'INR')} by ${formatCurrency(budgetInfo.overBudgetAmount, 'INR')}.`
+                      : `You've used ${budgetInfo.percentageUsed.toFixed(1)}% of your weekly budget (${formatCurrency(budgetInfo.currentWeekSpending, 'INR')} of ${formatCurrency(budgetInfo.weeklyBudget, 'INR')}). Only ${formatCurrency(budgetInfo.remainingBudget, 'INR')} remaining.`
+                    }
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowBudgetAlert(false)}
+                className="text-gray-400 hover:text-white transition-colors flex-shrink-0 ml-2"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Search and Export */}
         <div className="flex gap-2">
           <div className="relative flex-1">

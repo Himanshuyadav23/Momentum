@@ -4,6 +4,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
+import net from 'net';
+import http from 'http';
 // Import Firebase database initialization
 import './services/firebase-db';
 
@@ -22,18 +24,24 @@ import { notFound } from './middleware/notFound';
 // Environment loaded via ./loadEnv
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = parseInt(process.env.PORT || '5000', 10);
 
 // Security middleware
 app.use(helmet());
 
-// Rate limiting
+// Rate limiting - more lenient in development
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'), // limit each IP to 100 requests per windowMs
+  max: process.env.NODE_ENV === 'production' 
+    ? parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100') // 100 in production
+    : parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '1000'), // 1000 in development
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => {
+    // Skip rate limiting for health checks
+    return req.path === '/health' || req.path === '/api/health';
+  },
 });
 app.use(limiter);
 
@@ -120,18 +128,153 @@ app.use(errorHandler);
 // Global server instance for keep-alive
 let serverInstance: any = null;
 let isServerRunning = false;
+let isStarting = false;
+let retryTimeout: NodeJS.Timeout | null = null;
+
+// Check if port is available
+const isPortAvailable = (port: number): Promise<boolean> => {
+  return new Promise((resolve) => {
+    const testServer = net.createServer();
+    testServer.listen(port, () => {
+      testServer.once('close', () => resolve(true));
+      testServer.close();
+    });
+    testServer.on('error', () => {
+      resolve(false);
+    });
+  });
+};
+
+// Cleanup old server instance properly
+const cleanupServer = async (): Promise<void> => {
+  if (serverInstance) {
+    return new Promise((resolve) => {
+      try {
+        if (typeof serverInstance.close === 'function') {
+          serverInstance.close(() => {
+            serverInstance = null;
+            isServerRunning = false;
+            resolve();
+          });
+          // Force close after 2 seconds if graceful close doesn't work
+          setTimeout(() => {
+            if (serverInstance) {
+              try {
+                serverInstance.close();
+              } catch (e) {
+                // Ignore errors during force close
+              }
+              serverInstance = null;
+              isServerRunning = false;
+            }
+            resolve();
+          }, 2000);
+        } else {
+          serverInstance = null;
+          isServerRunning = false;
+          resolve();
+        }
+      } catch (error) {
+        serverInstance = null;
+        isServerRunning = false;
+        resolve();
+      }
+    });
+  }
+};
+
+// Check if server is actually responding
+const isServerResponding = async (): Promise<boolean> => {
+  try {
+    return new Promise((resolve) => {
+      const req = http.get(`http://localhost:${PORT}/health`, { timeout: 1000 }, (res: any) => {
+        resolve(res.statusCode === 200);
+      });
+      req.on('error', () => resolve(false));
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(false);
+      });
+    });
+  } catch {
+    return false;
+  }
+};
 
 // Start server with automatic retry
 const startServer = async (): Promise<void> => {
-  try {
-    // Prevent multiple server instances
-    if (serverInstance && isServerRunning) {
-      console.log('✅ Server already running');
+  // Prevent multiple simultaneous start attempts
+  if (isStarting) {
+    return;
+  }
+
+  // Prevent multiple server instances - check if server is actually running
+  if (serverInstance && isServerRunning) {
+    // Verify server is actually responding
+    const responding = await isServerResponding();
+    if (responding) {
+      // Server is running and responding - don't retry
       return;
+    } else {
+      // Server instance exists but not responding - clean it up
+      console.log('⚠️ Server instance exists but not responding. Cleaning up...');
+      await cleanupServer();
+    }
+  }
+
+  // If port is in use, check if it's our own server responding
+  const portAvailable = await isPortAvailable(PORT);
+  if (!portAvailable) {
+    const responding = await isServerResponding();
+    if (responding) {
+      // Port is in use but it's our server responding - we're already running!
+      console.log(`✅ Server is already running on port ${PORT} and responding`);
+      isServerRunning = true;
+      isStarting = false;
+      // Clear any retry timeouts since we're already running
+      if (retryTimeout) {
+        clearTimeout(retryTimeout);
+        retryTimeout = null;
+      }
+      return;
+    }
+    // Port is in use but server not responding - might be another process
+    console.error(`❌ Port ${PORT} is already in use by another process.`);
+    console.error('   Please stop the other process or change PORT in .env');
+    isStarting = false;
+    
+    // Clear any existing retry timeout
+    if (retryTimeout) {
+      clearTimeout(retryTimeout);
+    }
+    
+    // Retry in 10 seconds
+    retryTimeout = setTimeout(() => {
+      startServer();
+    }, 10000);
+    return;
+  }
+
+  isStarting = true;
+
+  try {
+    // Clean up old instance if it exists
+    if (serverInstance) {
+      console.log('🧹 Cleaning up old server instance...');
+      await cleanupServer();
+      // Wait a bit for port to be released
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    // Clear any existing retry timeout
+    if (retryTimeout) {
+      clearTimeout(retryTimeout);
+      retryTimeout = null;
     }
 
     serverInstance = app.listen(PORT, () => {
       isServerRunning = true;
+      isStarting = false;
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
@@ -141,35 +284,60 @@ const startServer = async (): Promise<void> => {
     });
 
     // Handle server errors gracefully - NEVER EXIT
-    serverInstance.on('error', (error: any) => {
+    serverInstance.on('error', async (error: any) => {
       isServerRunning = false;
+      isStarting = false;
+      
       if (error.code === 'EADDRINUSE') {
         console.error(`❌ Port ${PORT} is already in use.`);
         console.error('   Please stop the other process or change PORT in .env');
         console.log('🔄 Will retry in 10 seconds...');
-        setTimeout(() => {
+        
+        // Clean up this instance
+        await cleanupServer();
+        
+        // Clear any existing retry timeout
+        if (retryTimeout) {
+          clearTimeout(retryTimeout);
+        }
+        
+        retryTimeout = setTimeout(() => {
           startServer();
         }, 10000);
       } else {
         console.error('❌ Server error:', error.message);
         console.log('🔄 Will retry in 5 seconds...');
-        setTimeout(() => {
+        
+        // Clean up this instance
+        await cleanupServer();
+        
+        // Clear any existing retry timeout
+        if (retryTimeout) {
+          clearTimeout(retryTimeout);
+        }
+        
+        retryTimeout = setTimeout(() => {
           startServer();
         }, 5000);
       }
-      // NEVER exit - always retry
     });
 
     // Keep server alive - restart on close
     serverInstance.on('close', () => {
       isServerRunning = false;
-      console.warn('⚠️ Server connection closed. Will attempt to restart...');
-      setTimeout(() => {
-        if (!isServerRunning) {
-          console.log('🔄 Attempting to restart server...');
-          startServer();
-        }
-      }, 2000);
+      isStarting = false;
+      serverInstance = null;
+      console.warn('⚠️ Server connection closed.');
+      
+      // Only auto-restart if not manually closed
+      if (!retryTimeout) {
+        console.log('🔄 Will attempt to restart in 3 seconds...');
+        retryTimeout = setTimeout(() => {
+          if (!isServerRunning && !isStarting) {
+            startServer();
+          }
+        }, 3000);
+      }
     });
 
     // Listen for connection errors
@@ -181,11 +349,21 @@ const startServer = async (): Promise<void> => {
     return;
   } catch (error: any) {
     isServerRunning = false;
+    isStarting = false;
     console.error('❌ Failed to start server:', error.message);
     console.error('   Error details:', error.stack);
+    
+    // Clean up if server instance was created
+    await cleanupServer();
+    
+    // Clear any existing retry timeout
+    if (retryTimeout) {
+      clearTimeout(retryTimeout);
+    }
+    
     // ALWAYS retry - never exit
     console.log('🔄 Will retry in 5 seconds...');
-    setTimeout(() => {
+    retryTimeout = setTimeout(() => {
       startServer();
     }, 5000);
     return;
@@ -218,6 +396,14 @@ process.on('uncaughtException', (err: Error) => {
 process.on('SIGTERM', () => {
   console.log('🛑 SIGTERM received. Shutting down gracefully...');
   console.log('📦 Firebase connection closed.');
+  
+  // Clear any retry timeouts
+  if (retryTimeout) {
+    clearTimeout(retryTimeout);
+    retryTimeout = null;
+  }
+  
+  isStarting = false;
   if (serverInstance) {
     serverInstance.close(() => {
       process.exit(0);
@@ -229,6 +415,14 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
   console.log('🛑 SIGINT received (Ctrl+C). Shutting down gracefully...');
+  
+  // Clear any retry timeouts
+  if (retryTimeout) {
+    clearTimeout(retryTimeout);
+    retryTimeout = null;
+  }
+  
+  isStarting = false;
   if (serverInstance) {
     serverInstance.close(() => {
       process.exit(0);
@@ -243,39 +437,50 @@ startServer().catch((error) => {
   console.error('❌ Fatal error starting server:', error);
   // ALWAYS retry - never give up
   console.log('🔄 Will retry in 5 seconds...');
-  setTimeout(() => {
+  isStarting = false;
+  
+  // Clear any existing retry timeout
+  if (retryTimeout) {
+    clearTimeout(retryTimeout);
+  }
+  
+  retryTimeout = setTimeout(() => {
     startServer();
   }, 5000);
 });
 
 // Keep process alive and monitor health
 const keepAlive = () => {
-  // Periodic health check and status logging
+  let lastHeartbeat = 0;
+  
+  // Periodic health check and status logging (less aggressive - every 30 seconds)
   setInterval(() => {
     const uptime = process.uptime();
     const memUsage = process.memoryUsage();
     const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
     
     // Log heartbeat every 5 minutes
-    if (Math.floor(uptime) % 300 === 0) {
-      console.log(`💓 Server heartbeat - Uptime: ${Math.round(uptime / 60)}m, Memory: ${heapUsedMB}MB`);
+    const minutes = Math.floor(uptime / 60);
+    if (minutes !== lastHeartbeat && minutes > 0 && minutes % 5 === 0) {
+      lastHeartbeat = minutes;
+      console.log(`💓 Server heartbeat - Uptime: ${minutes}m, Memory: ${heapUsedMB}MB`);
     }
     
-    // Check if server is still running
-    if (!isServerRunning && serverInstance) {
-      console.warn('⚠️ Server instance exists but not marked as running. Attempting recovery...');
-      setTimeout(() => {
-        if (!isServerRunning) {
-          startServer();
-        }
-      }, 5000);
+    // Check if server is still running (only if we're not already starting)
+    // Check less frequently - every 30 seconds instead of every second
+    if (!isServerRunning && !isStarting && !serverInstance && !retryTimeout) {
+      // Only attempt recovery if we've been down for more than 10 seconds
+      if (uptime % 10 === 0) {
+        console.warn('⚠️ Server appears to be down. Attempting recovery...');
+        startServer();
+      }
     }
     
     // Memory warning (over 500MB)
     if (heapUsedMB > 500) {
       console.warn(`⚠️ High memory usage: ${heapUsedMB}MB`);
     }
-  }, 1000);
+  }, 30000); // Check every 30 seconds instead of every second
 
   // Keep process alive - prevent any automatic exits
   process.stdin.resume();
@@ -283,7 +488,11 @@ const keepAlive = () => {
   // Handle any attempt to exit
   process.on('exit', (code) => {
     console.log(`⚠️ Process exiting with code ${code}`);
-    console.log('🔄 Attempting to prevent exit...');
+    // Clean up retry timeout if process is exiting
+    if (retryTimeout) {
+      clearTimeout(retryTimeout);
+      retryTimeout = null;
+    }
   });
 };
 

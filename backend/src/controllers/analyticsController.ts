@@ -2,6 +2,21 @@ import { Request, Response } from 'express';
 import { TimeEntry } from '../models/TimeEntry';
 import { Habit, HabitLog } from '../models/Habit';
 import { Expense } from '../models/Expense';
+import { User } from '../models/User';
+
+// Helper function to format minutes to "Xh Ym" format
+const formatTime = (minutes: number): string => {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (hours > 0 && mins > 0) {
+    return `${hours}h ${mins}m`;
+  } else if (hours > 0) {
+    return `${hours}h`;
+  } else if (mins > 0) {
+    return `${mins}m`;
+  }
+  return '0m';
+};
 
 export const getDashboardData = async (req: Request, res: Response) => {
   try {
@@ -31,20 +46,95 @@ export const getDashboardData = async (req: Request, res: Response) => {
       endDate: endOfDay
     });
 
-    // Calculate totals
-    const totalTimeToday = todayTimeEntries.reduce((sum, entry) => sum + (entry.duration || 0), 0);
+    // Calculate totals with productive/wasted breakdown
+    const productiveTimeToday = todayTimeEntries
+      .filter(entry => entry.isProductive)
+      .reduce((sum, entry) => sum + (entry.duration || 0), 0);
+    const wastedTimeToday = todayTimeEntries
+      .filter(entry => !entry.isProductive)
+      .reduce((sum, entry) => sum + (entry.duration || 0), 0);
+    const totalTimeToday = productiveTimeToday + wastedTimeToday;
     const totalExpensesToday = todayExpenses.reduce((sum, expense) => sum + expense.amount, 0);
     const completedHabitsToday = todayHabitLogs.length;
+
+    // Get recent activity (last 10 time entries and habit logs)
+    const recentTimeEntries = await TimeEntry.findByUserId(userId, {
+      limit: 10
+    });
+    const recentHabitLogs = await HabitLog.findByUserId(userId, {
+      limit: 10
+    });
+
+    // Format recent activity
+    const recentActivity: Array<{
+      type: 'time' | 'habit';
+      id: string;
+      title: string;
+      subtitle: string;
+      timeAgo: string;
+      timestamp: Date;
+      isProductive?: boolean;
+      habitName?: string;
+    }> = [];
+
+    const formatTimeAgo = (date: Date): string => {
+      const now = new Date();
+      const diffMs = now.getTime() - date.getTime();
+      const diffMins = Math.floor(diffMs / (1000 * 60));
+      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins} minute${diffMins !== 1 ? 's' : ''} ago`;
+      if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+      if (diffDays === 1) return 'Yesterday';
+      if (diffDays < 7) return `${diffDays} days ago`;
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    };
+
+    recentTimeEntries.slice(0, 5).forEach(entry => {
+      recentActivity.push({
+        type: 'time',
+        id: entry.id,
+        title: entry.category,
+        subtitle: `${formatTime(entry.duration || 0)}`,
+        timeAgo: formatTimeAgo(entry.startTime),
+        timestamp: entry.startTime,
+        isProductive: entry.isProductive
+      });
+    });
+
+    recentHabitLogs.slice(0, 5).forEach(log => {
+      const habit = habits.find(h => h.id === log.habitId);
+      recentActivity.push({
+        type: 'habit',
+        id: log.id,
+        title: habit?.name || 'Habit',
+        subtitle: 'Completed',
+        timeAgo: formatTimeAgo(log.completedAt),
+        timestamp: log.completedAt
+      });
+    });
+
+    // Sort by timestamp (newest first)
+    recentActivity.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+    // Remove timestamp before sending (not needed in response)
+    const activityResponse = recentActivity.slice(0, 6).map(({ timestamp, ...rest }) => rest);
 
     return res.status(200).json({
       success: true,
       data: {
         dashboard: {
           totalTimeToday,
+          productiveTimeToday,
+          wastedTimeToday,
           totalExpensesToday,
+          expenseCountToday: todayExpenses.length,
           completedHabitsToday,
           totalHabits: habits.length,
-          activeTimer: todayTimeEntries.find(entry => entry.isActive) || null
+          activeTimer: todayTimeEntries.find(entry => entry.isActive) || null,
+          recentActivity: activityResponse
         }
       }
     });
@@ -70,10 +160,13 @@ export const getDashboardData = async (req: Request, res: Response) => {
         data: {
           dashboard: {
             totalTimeToday: 0,
+            productiveTimeToday: 0,
+            wastedTimeToday: 0,
             totalExpensesToday: 0,
             completedHabitsToday: 0,
             totalHabits: 0,
-            activeTimer: null
+            activeTimer: null,
+            recentActivity: []
           }
         },
         message: 'Firestore index required. If indexes are enabled, try restarting the backend server.',
@@ -203,6 +296,22 @@ const getPeriodReport = async (req: Request, res: Response, isMonthly: boolean =
     const totalExpenses = periodExpenses.reduce((sum, expense) => sum + expense.amount, 0);
     const completedLogs = periodHabitLogs.length;
 
+    // Get budget info for weekly reports
+    let budgetInfo = null;
+    if (!isMonthly) {
+      const user = await User.findById(userId);
+      if (user?.weeklyBudget) {
+        budgetInfo = {
+          weeklyBudget: user.weeklyBudget,
+          currentWeekSpending: totalExpenses,
+          percentageUsed: (totalExpenses / user.weeklyBudget) * 100,
+          isOverBudget: totalExpenses > user.weeklyBudget,
+          remainingBudget: Math.max(0, user.weeklyBudget - totalExpenses),
+          overBudgetAmount: Math.max(0, totalExpenses - user.weeklyBudget)
+        };
+      }
+    }
+
     const reportType = isMonthly ? 'monthlyReport' : 'weeklyReport';
 
     return res.status(200).json({
@@ -229,7 +338,8 @@ const getPeriodReport = async (req: Request, res: Response, isMonthly: boolean =
           expenses: {
             total: totalExpenses,
             categoryBreakdown: expenseCategoryBreakdown,
-            dailyBreakdown: dailyExpenseBreakdown
+            dailyBreakdown: dailyExpenseBreakdown,
+            budgetInfo // Include budget info for weekly reports
           },
           // Raw data for compatibility
           startDate: startDate,
@@ -297,6 +407,126 @@ export const getWeeklyReport = async (req: Request, res: Response) => {
 
 export const getMonthlyReport = async (req: Request, res: Response) => {
   return getPeriodReport(req, res, true);
+};
+
+export const getActivityHeatmap = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.id;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Get data for last 52 weeks (364 days)
+    const startDate = new Date(today);
+    startDate.setDate(startDate.getDate() - 363); // 52 weeks * 7 days - 1
+    
+    // Fetch all three types of data in parallel
+    const [timeEntries, habitLogs, expenses] = await Promise.all([
+      TimeEntry.findByUserId(userId, {
+        startDate,
+        endDate: new Date(today.getTime() + 24 * 60 * 60 * 1000) // Include today
+      }),
+      HabitLog.findByUserId(userId, {
+        startDate,
+        endDate: new Date(today.getTime() + 24 * 60 * 60 * 1000)
+      }),
+      Expense.findByUserId(userId, {
+        startDate,
+        endDate: new Date(today.getTime() + 24 * 60 * 60 * 1000)
+      })
+    ]);
+
+    // Group data by date (YYYY-MM-DD format)
+    const datesWithTime = new Set<string>();
+    const datesWithHabits = new Set<string>();
+    const datesWithExpenses = new Set<string>();
+
+    timeEntries.forEach(entry => {
+      const date = entry.startTime.toISOString().split('T')[0];
+      datesWithTime.add(date);
+    });
+
+    habitLogs.forEach(log => {
+      const date = log.completedAt.toISOString().split('T')[0];
+      datesWithHabits.add(date);
+    });
+
+    expenses.forEach(expense => {
+      const date = expense.date.toISOString().split('T')[0];
+      datesWithExpenses.add(date);
+    });
+
+    // Find dates where all three tasks were completed
+    const allDates = new Set<string>();
+    [...datesWithTime, ...datesWithHabits, ...datesWithExpenses].forEach(date => allDates.add(date));
+    
+    const activityData: { [date: string]: { hasTime: boolean; hasHabit: boolean; hasExpense: boolean; completed: boolean } } = {};
+    
+    allDates.forEach(date => {
+      const hasTime = datesWithTime.has(date);
+      const hasHabit = datesWithHabits.has(date);
+      const hasExpense = datesWithExpenses.has(date);
+      // Show green if ANY activity exists (more realistic than requiring all three)
+      const completed = hasTime || hasHabit || hasExpense;
+      
+      activityData[date] = {
+        hasTime,
+        hasHabit,
+        hasExpense,
+        completed
+      };
+    });
+
+    // Calculate current streak (consecutive days from today backwards)
+    let currentStreak = 0;
+    let checkDate = new Date(today);
+    
+    while (checkDate >= startDate) {
+      const dateStr = checkDate.toISOString().split('T')[0];
+      const dayData = activityData[dateStr];
+      
+      if (dayData?.completed) {
+        currentStreak++;
+        checkDate.setDate(checkDate.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+
+    // Calculate longest streak
+    let longestStreak = 0;
+    let tempStreak = 0;
+    let checkDate2 = new Date(startDate);
+    
+    while (checkDate2 <= today) {
+      const dateStr = checkDate2.toISOString().split('T')[0];
+      const dayData = activityData[dateStr];
+      
+      if (dayData?.completed) {
+        tempStreak++;
+        longestStreak = Math.max(longestStreak, tempStreak);
+      } else {
+        tempStreak = 0;
+      }
+      
+      checkDate2.setDate(checkDate2.getDate() + 1);
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        activityData,
+        currentStreak,
+        longestStreak,
+        totalDays: Object.keys(activityData).filter(date => activityData[date].completed).length
+      }
+    });
+  } catch (error) {
+    console.error('Get activity heatmap error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to get activity heatmap'
+    });
+  }
 };
 
 export const getInsights = async (req: Request, res: Response) => {

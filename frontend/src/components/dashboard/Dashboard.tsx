@@ -11,12 +11,10 @@ import {
   Clock, 
   Target, 
   DollarSign, 
-  Play, 
-  Plus, 
-  TrendingUp,
   Calendar,
   BarChart3
 } from 'lucide-react';
+import { ActivityHeatmap } from './ActivityHeatmap';
 
 interface DashboardData {
   time: {
@@ -33,6 +31,15 @@ interface DashboardData {
     total: number;
     count: number;
   };
+  recentActivity?: Array<{
+    type: 'time' | 'habit';
+    id: string;
+    title: string;
+    subtitle: string;
+    timeAgo: string;
+    isProductive?: boolean;
+    habitName?: string;
+  }>;
 }
 
 export const Dashboard: React.FC = () => {
@@ -40,11 +47,46 @@ export const Dashboard: React.FC = () => {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTimer, setActiveTimer] = useState<any>(null);
+  const [heatmapData, setHeatmapData] = useState<any>(null);
+  const [weeklyData, setWeeklyData] = useState<any>(null);
 
   useEffect(() => {
-    fetchDashboardData();
-    fetchActiveTimer();
+    // Fetch all data in parallel for faster loading
+    Promise.all([
+      fetchDashboardData(),
+      fetchActiveTimer().catch(() => {
+        // Silently handle errors - don't block dashboard from loading
+      }),
+      fetchHeatmapData().catch(() => {
+        // Silently handle errors
+      }),
+      fetchWeeklyData().catch(() => {
+        // Silently handle errors
+      })
+    ]);
   }, []);
+
+  const fetchWeeklyData = async () => {
+    try {
+      const response = await apiClient.getWeeklyReport();
+      if (response.success && response.data) {
+        setWeeklyData(response.data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch weekly data:', error);
+    }
+  };
+
+  const fetchHeatmapData = async () => {
+    try {
+      const response = await apiClient.getActivityHeatmap();
+      if (response.success && response.data) {
+        setHeatmapData(response.data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch heatmap data:', error);
+    }
+  };
 
   const fetchDashboardData = async () => {
     try {
@@ -66,6 +108,7 @@ export const Dashboard: React.FC = () => {
             total: Number(d?.expenses?.total ?? 0),
             count: Number(d?.expenses?.count ?? 0),
           },
+          recentActivity: d?.recentActivity || [],
         };
         setDashboardData(normalized);
       }
@@ -95,9 +138,13 @@ export const Dashboard: React.FC = () => {
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
+    // Use INR if user has weekly budget set, otherwise default to USD
+    const currency = user?.weeklyBudget ? 'INR' : 'USD';
+    return new Intl.NumberFormat('en-IN', {
       style: 'currency',
-      currency: 'USD',
+      currency: currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
     }).format(amount);
   };
 
@@ -161,21 +208,17 @@ export const Dashboard: React.FC = () => {
           </Card>
         )}
 
-        {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <Button className="h-20 flex flex-col items-center justify-center space-y-2 bg-white text-black hover:bg-gray-100">
-            <Play className="w-6 h-6" />
-            <span>Start Timer</span>
-          </Button>
-          <Button variant="outline" className="h-20 flex flex-col items-center justify-center space-y-2 border-gray-600 text-gray-300 hover:bg-gray-800">
-            <Target className="w-6 h-6" />
-            <span>Add Habit</span>
-          </Button>
-          <Button variant="outline" className="h-20 flex flex-col items-center justify-center space-y-2 border-gray-600 text-gray-300 hover:bg-gray-800">
-            <DollarSign className="w-6 h-6" />
-            <span>Add Expense</span>
-          </Button>
-        </div>
+        {/* Activity Heatmap */}
+        {heatmapData && (
+          <div className="mb-8">
+            <ActivityHeatmap
+              activityData={heatmapData.activityData}
+              currentStreak={heatmapData.currentStreak}
+              longestStreak={heatmapData.longestStreak}
+              totalDays={heatmapData.totalDays}
+            />
+          </div>
+        )}
 
         {/* Dashboard Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -250,10 +293,12 @@ export const Dashboard: React.FC = () => {
             <CardContent>
               <div className="space-y-2">
                 <div className="text-2xl font-bold text-white">
-                  {dashboardData ? formatCurrency(dashboardData.expenses.total) : '$0.00'}
+                  {dashboardData ? formatCurrency(dashboardData.expenses.total) : formatCurrency(0)}
                 </div>
                 <p className="text-xs text-gray-400">
-                  {dashboardData ? `${dashboardData.expenses.count} transactions` : 'No expenses today'}
+                  {dashboardData && dashboardData.expenses.count > 0 
+                    ? `${dashboardData.expenses.count} transaction${dashboardData.expenses.count !== 1 ? 's' : ''}` 
+                    : 'No expenses today'}
                 </p>
                 {user?.weeklyBudget && (
                   <div className="pt-2">
@@ -284,22 +329,25 @@ export const Dashboard: React.FC = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                <div className="flex items-center space-x-3 p-3 bg-gray-700 rounded-lg">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-white">Work Session</p>
-                    <p className="text-xs text-gray-300">2h 30m • 2 hours ago</p>
+                {dashboardData?.recentActivity && dashboardData.recentActivity.length > 0 ? (
+                  dashboardData.recentActivity.map((activity) => (
+                    <div key={activity.id} className="flex items-center space-x-3 p-3 bg-gray-700 rounded-lg">
+                      <div className={`w-2 h-2 rounded-full ${activity.type === 'time' ? (activity.isProductive ? 'bg-green-500' : 'bg-red-500') : 'bg-blue-500'}`}></div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-white">{activity.title}</p>
+                        <p className="text-xs text-gray-300">{activity.subtitle} • {activity.timeAgo}</p>
+                      </div>
+                      <Badge variant="secondary" className="bg-gray-600 text-gray-200">
+                        {activity.type === 'time' ? (activity.isProductive ? 'Productive' : 'Wasted') : 'Habit'}
+                      </Badge>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-4">
+                    <p className="text-sm text-gray-400">No recent activity</p>
+                    <p className="text-xs text-gray-500 mt-1">Start tracking time or completing habits to see activity here</p>
                   </div>
-                  <Badge variant="secondary" className="bg-gray-600 text-gray-200">Productive</Badge>
-                </div>
-                <div className="flex items-center space-x-3 p-3 bg-gray-700 rounded-lg">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-white">Morning Exercise</p>
-                    <p className="text-xs text-gray-300">Completed • 3 hours ago</p>
-                  </div>
-                  <Badge variant="secondary" className="bg-gray-600 text-gray-200">Habit</Badge>
-                </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -314,23 +362,64 @@ export const Dashboard: React.FC = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-300">Productive Time</span>
-                  <span className="text-sm font-medium text-white">24h 15m</span>
+                {/* Productive Time */}
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-sm text-gray-300">Productive Time</span>
+                    <span className="text-sm font-medium text-white">
+                      {weeklyData?.time?.productive ? formatTime(weeklyData.time.productive) : '0h 0m'}
+                    </span>
+                  </div>
+                  <Progress 
+                    value={weeklyData?.time?.total > 0 
+                      ? Math.min((weeklyData.time.productive / weeklyData.time.total) * 100, 100) 
+                      : 0
+                    } 
+                    className="h-2" 
+                  />
                 </div>
-                <Progress value={75} className="h-2" />
                 
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-300">Habit Completion</span>
-                  <span className="text-sm font-medium text-white">85%</span>
+                {/* Habit Completion */}
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-sm text-gray-300">Habit Completion</span>
+                    <span className="text-sm font-medium text-white">
+                      {weeklyData?.habits?.totalHabits > 0
+                        ? `${Math.round((weeklyData.habits.completedLogs / Math.max(weeklyData.habits.totalHabits, 1)) * 100)}%`
+                        : '0%'}
+                    </span>
+                  </div>
+                  <Progress 
+                    value={weeklyData?.habits?.totalHabits > 0
+                      ? Math.min((weeklyData.habits.completedLogs / Math.max(weeklyData.habits.totalHabits, 1)) * 100, 100)
+                      : 0
+                    } 
+                    className="h-2" 
+                  />
                 </div>
-                <Progress value={85} className="h-2" />
                 
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-300">Budget Used</span>
-                  <span className="text-sm font-medium text-white">60%</span>
+                {/* Budget Used */}
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-sm text-gray-300">Budget Used</span>
+                    <span className="text-sm font-medium text-white">
+                      {weeklyData?.expenses?.budgetInfo
+                        ? `${Math.round(weeklyData.expenses.budgetInfo.percentageUsed)}%`
+                        : user?.weeklyBudget && weeklyData?.expenses?.total
+                        ? `${Math.round((weeklyData.expenses.total / user.weeklyBudget) * 100)}%`
+                        : '0%'}
+                    </span>
+                  </div>
+                  <Progress 
+                    value={weeklyData?.expenses?.budgetInfo
+                      ? Math.min(weeklyData.expenses.budgetInfo.percentageUsed, 100)
+                      : user?.weeklyBudget && weeklyData?.expenses?.total
+                      ? Math.min((weeklyData.expenses.total / user.weeklyBudget) * 100, 100)
+                      : 0
+                    } 
+                    className="h-2" 
+                  />
                 </div>
-                <Progress value={60} className="h-2" />
               </div>
             </CardContent>
           </Card>

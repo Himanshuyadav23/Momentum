@@ -70,17 +70,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               apiClient.setToken(d.token);
             } else {
               console.error('Login response failed:', response);
-              setUser(null);
+              // Only clear user if it's a persistent error, not network issues
+              if (!response.message?.includes('connect') && !response.message?.includes('network')) {
+                setUser(null);
+              }
             }
           } catch (error: any) {
             console.error('Auth state change error:', error);
             console.error('Error details:', {
               message: error?.message,
               stack: error?.stack,
-              response: error?.response
+              response: error?.response,
+              isNetworkError: error?.isNetworkError
             });
-            setUser(null);
-            // Don't clear Firebase auth, just clear backend user
+            // Don't clear user on network errors - server might be temporarily unavailable
+            // Only clear on authentication errors (401) or explicit auth failures
+            if (error?.status === 401 || (error?.message && !error?.isNetworkError && !error?.message?.includes('connect'))) {
+              setUser(null);
+            }
+            // Don't clear Firebase auth, just clear backend user on auth failures
           }
         } else {
           setUser(null);
@@ -127,11 +135,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error: any) {
       console.error('Google sign in error:', error);
       // Provide better error message
-      if (error.message?.includes('Failed to connect')) {
-        throw new Error('Backend server is not running. Please start the backend server.');
+      if (error?.isNetworkError || error.message?.includes('Failed to connect')) {
+        throw new Error('Unable to connect to server. Please ensure the backend server is running and try again.');
       }
       if (error.message?.includes('Firebase not initialized') || error.message?.includes('Missing environment variables')) {
         throw new Error('Firebase is not configured. Please set environment variables in Vercel project settings.');
+      }
+      if (error?.status === 429) {
+        throw new Error('Too many requests. Please wait a moment and try again.');
       }
       throw error;
     } finally {
@@ -160,11 +171,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error: any) {
       console.error('Email sign in error:', error);
       // Provide better error message
-      if (error.message?.includes('Failed to connect')) {
-        throw new Error('Backend server is not running. Please start the backend server.');
+      if (error?.isNetworkError || error.message?.includes('Failed to connect')) {
+        throw new Error('Unable to connect to server. Please ensure the backend server is running and try again.');
       }
       if (error.message?.includes('Firebase not initialized') || error.message?.includes('Missing environment variables')) {
         throw new Error('Firebase is not configured. Please set environment variables in Vercel project settings.');
+      }
+      if (error?.status === 429) {
+        throw new Error('Too many requests. Please wait a moment and try again.');
       }
       throw error;
     } finally {

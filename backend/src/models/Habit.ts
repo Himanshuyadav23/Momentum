@@ -144,11 +144,20 @@ export class HabitLog {
       createdAt: now
     };
 
-    await habitLogsCollection().doc(id).set({
-      ...habitLog,
+    // Filter out undefined values - Firestore doesn't accept undefined
+    const firestoreData: any = {
+      habitId: habitLog.habitId,
+      userId: habitLog.userId,
       completedAt: firestoreHelpers.dateToTimestamp(habitLog.completedAt),
       createdAt: firestoreHelpers.dateToTimestamp(now)
-    });
+    };
+
+    // Only include notes if it's defined (not undefined or null)
+    if (habitLog.notes !== undefined && habitLog.notes !== null) {
+      firestoreData.notes = habitLog.notes;
+    }
+
+    await habitLogsCollection().doc(id).set(firestoreData);
 
     return habitLog;
   }

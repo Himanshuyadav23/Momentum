@@ -48,8 +48,26 @@ class ApiClient {
     try {
       const response = await fetch(url, config);
       
+      // Handle rate limiting (429) - retry after delay
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('Retry-After');
+        const delay = retryAfter ? parseInt(retryAfter) * 1000 : 2000;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        // Retry once
+        return this.request(endpoint, options);
+      }
+      
       // Handle network errors or non-json responses
       if (!response.ok) {
+        // Handle 401 Unauthorized - token expired or invalid
+        if (response.status === 401) {
+          // Clear token but don't throw error - let caller handle
+          this.clearToken();
+          const error = new Error('Session expired. Please log in again.');
+          (error as any).status = 401;
+          throw error;
+        }
+        
         let errorMessage = `Request failed with status ${response.status}`;
         try {
           const data = await response.json();
@@ -58,16 +76,20 @@ class ApiClient {
           // Response might not be JSON
           errorMessage = await response.text() || errorMessage;
         }
-        throw new Error(errorMessage);
+        const error = new Error(errorMessage);
+        (error as any).status = response.status;
+        throw error;
       }
 
       const data = await response.json();
       return data;
     } catch (error: any) {
       // Handle network/fetch errors
-      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      if (error.name === 'TypeError' && (error.message.includes('fetch') || error.message.includes('Failed to fetch'))) {
         console.error('API request failed - Network error. Is the backend server running?', error);
-        throw new Error('Failed to connect to server. Please check if the backend is running.');
+        const networkError = new Error('Failed to connect to server. Please check if the backend is running.');
+        (networkError as any).isNetworkError = true;
+        throw networkError;
       }
       console.error('API request failed:', error);
       throw error;
@@ -149,8 +171,13 @@ class ApiClient {
   }
 
   // Habit endpoints
-  async getHabits() {
-    return this.request('/habits');
+  async getHabits(includeCompletion?: boolean) {
+    const queryParams = new URLSearchParams();
+    if (includeCompletion) {
+      queryParams.append('includeCompletion', 'true');
+    }
+    const query = queryParams.toString();
+    return this.request(`/habits${query ? `?${query}` : ''}`);
   }
 
   async createHabit(data: { name: string; description?: string; frequency?: string; targetCount?: number }) {
@@ -247,17 +274,21 @@ class ApiClient {
     if (res && (res as any).data && (res as any).data.dashboard) {
       const d: any = (res as any).data.dashboard;
       const totalTimeToday = Number(d.totalTimeToday ?? 0);
+      const productiveTimeToday = Number(d.productiveTimeToday ?? 0);
+      const wastedTimeToday = Number(d.wastedTimeToday ?? 0);
       const completedHabitsToday = Number(d.completedHabitsToday ?? 0);
       const totalHabits = Number(d.totalHabits ?? 0);
       const totalExpensesToday = Number(d.totalExpensesToday ?? 0);
+      const expenseCountToday = Number(d.expenseCountToday ?? 0);
       const activeEntry = d.activeTimer ?? null;
+      const recentActivity = d.recentActivity || [];
 
       const normalized = {
         success: true,
         data: {
           time: {
-            productive: totalTimeToday,
-            wasted: 0,
+            productive: productiveTimeToday,
+            wasted: wastedTimeToday,
             total: totalTimeToday,
           },
           habits: {
@@ -267,9 +298,10 @@ class ApiClient {
           },
           expenses: {
             total: totalExpensesToday,
-            count: 0,
+            count: expenseCountToday,
           },
           activeEntry,
+          recentActivity,
         },
       } as ApiResponse;
       return normalized;
@@ -290,21 +322,22 @@ class ApiClient {
             // New structured format (preferred)
             time: wr.time || {
               total: wr.totalTime || 0,
-              productive: 0,
-              wasted: 0,
+              productive: wr.productive || 0,
+              wasted: wr.wasted || 0,
               dailyBreakdown: wr.dailyTimeBreakdown || {},
               categoryBreakdown: wr.timeCategoryBreakdown || {}
             },
             habits: wr.habits || {
-              totalHabits: 0,
-              completedLogs: wr.totalHabits || 0,
-              streaks: [],
+              totalHabits: wr.totalHabits || 0,
+              completedLogs: wr.completedLogs || 0,
+              streaks: wr.streaks || [],
               dailyBreakdown: wr.dailyHabitBreakdown || {}
             },
             expenses: wr.expenses || {
               total: wr.totalExpenses || 0,
               categoryBreakdown: wr.expenseCategoryBreakdown || {},
-              dailyBreakdown: wr.dailyExpenseBreakdown || {}
+              dailyBreakdown: wr.dailyExpenseBreakdown || {},
+              budgetInfo: wr.budgetInfo || null
             },
             // Also include raw data for backwards compatibility
             ...wr
@@ -356,6 +389,10 @@ class ApiClient {
       }
     }
     return res;
+  }
+
+  async getActivityHeatmap() {
+    return this.request('/analytics/heatmap');
   }
 
   async getInsights() {

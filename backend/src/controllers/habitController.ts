@@ -47,9 +47,65 @@ export const createHabit = async (req: Request, res: Response) => {
 export const getHabits = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
-    const { activeOnly } = req.query;
+    const { activeOnly, includeCompletion } = req.query;
 
     const habits = await Habit.findByUserId(userId, activeOnly !== 'false');
+
+    // If includeCompletion is requested, fetch completion status for all habits in parallel
+    if (includeCompletion === 'true') {
+      const today = new Date();
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+      const weekAgo = new Date(today);
+      weekAgo.setDate(weekAgo.getDate() - 7);
+
+      // Fetch all habit logs for today and last week in parallel
+      const [todayLogs, weekLogs] = await Promise.all([
+        HabitLog.findByUserId(userId, {
+          startDate: startOfDay,
+          endDate: endOfDay
+        }),
+        HabitLog.findByUserId(userId, {
+          startDate: weekAgo,
+          endDate: endOfDay
+        })
+      ]);
+
+      // Group logs by habitId for quick lookup
+      const todayLogsByHabit = new Map<string, typeof todayLogs>();
+      const weekLogsByHabit = new Map<string, number>();
+
+      todayLogs.forEach(log => {
+        if (!todayLogsByHabit.has(log.habitId)) {
+          todayLogsByHabit.set(log.habitId, []);
+        }
+        todayLogsByHabit.get(log.habitId)!.push(log);
+      });
+
+      weekLogs.forEach(log => {
+        weekLogsByHabit.set(log.habitId, (weekLogsByHabit.get(log.habitId) || 0) + 1);
+      });
+
+      // Enrich habits with completion data
+      const habitsWithCompletion = habits.map(habit => {
+        const todayHabitLogs = todayLogsByHabit.get(habit.id) || [];
+        const todayCount = todayHabitLogs.length;
+        const weekCount = weekLogsByHabit.get(habit.id) || 0;
+
+        return {
+          ...habit,
+          completedToday: todayCount >= habit.targetCount,
+          todayCompletionCount: todayCount,
+          todayLogId: todayHabitLogs.length > 0 ? todayHabitLogs[0].id : undefined,
+          recentCompletions: weekCount
+        };
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: { habits: habitsWithCompletion }
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -187,12 +243,18 @@ export const logHabit = async (req: Request, res: Response) => {
       });
     }
 
-    const habitLog = await HabitLog.create({
+    // Only include notes if it's a non-empty string
+    const habitLogData: any = {
       habitId,
       userId,
-      completedAt: new Date(),
-      notes
-    });
+      completedAt: new Date()
+    };
+    
+    if (notes && notes.trim()) {
+      habitLogData.notes = notes.trim();
+    }
+    
+    const habitLog = await HabitLog.create(habitLogData);
 
     // Improved streak calculation with targetCount support
     // Get all logs ordered by date (newest first)
