@@ -9,6 +9,7 @@ export interface IUser {
   timeCategories: string[];
   weeklyBudget?: number;
   income?: number;
+  dailyProductiveHours?: number;
   onboardingCompleted: boolean;
   createdAt: Date;
   updatedAt: Date;

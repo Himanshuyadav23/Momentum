@@ -20,6 +20,7 @@ interface User {
   timeCategories: string[];
   weeklyBudget?: number;
   income?: number;
+  dailyProductiveHours?: number;
   onboardingCompleted: boolean;
 }
 

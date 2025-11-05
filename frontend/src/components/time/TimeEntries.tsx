@@ -47,10 +47,14 @@ export const TimeEntries: React.FC<TimeEntriesProps> = ({ refreshTrigger = 0, on
       const startDate = getStartDate(dateRange);
       const endDate = new Date().toISOString();
 
+      console.log('Fetching time entries:', { dateRange, startDate, endDate });
+
       const response = await apiClient.getTimeEntries({
         startDate,
         endDate
       });
+
+      console.log('Time entries response:', response);
 
       if (response.success && response.data) {
         const d: any = response.data;
@@ -62,10 +66,15 @@ export const TimeEntries: React.FC<TimeEntriesProps> = ({ refreshTrigger = 0, on
             : Array.isArray(d)
               ? d
               : [];
+        console.log('Setting time entries:', list.length, 'entries');
         setEntries(list);
+      } else {
+        console.warn('Time entries response not successful:', response);
+        setEntries([]);
       }
     } catch (error) {
       console.error('Failed to fetch time entries:', error);
+      setEntries([]);
     } finally {
       setLoading(false);
     }

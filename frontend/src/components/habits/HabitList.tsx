@@ -245,7 +245,7 @@ export const HabitList: React.FC<HabitListProps> = ({ refreshTrigger = 0 }) => {
           </Badge>
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 overflow-x-hidden">
         {habits.length === 0 ? (
           <div className="text-center py-8">
             <Target className="h-12 w-12 text-gray-500 mx-auto mb-4" />
@@ -256,43 +256,43 @@ export const HabitList: React.FC<HabitListProps> = ({ refreshTrigger = 0 }) => {
           habits.map((habit) => (
             <div
               key={habit.id}
-              className={`p-4 rounded-lg space-y-3 transition-all ${
+              className={`p-4 rounded-lg space-y-3 transition-all overflow-hidden ${
                 habit.completedToday 
                   ? 'bg-green-900/30 border-2 border-green-600' 
                   : 'bg-gray-700'
               }`}
             >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-2 mb-1">
-                    <h3 className="font-medium text-white">{habit.name}</h3>
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center flex-wrap gap-2 mb-1">
+                    <h3 className="font-medium text-white truncate max-w-full">{habit.name}</h3>
                     <Badge
                       variant="outline"
-                      className="border-gray-500 text-gray-300"
+                      className="border-gray-500 text-gray-300 whitespace-nowrap"
                     >
                       {habit.frequency}
                     </Badge>
                     {habit.targetCount > 1 && (
-                      <Badge variant="outline" className="border-blue-500 text-blue-400">
+                      <Badge variant="outline" className="border-blue-500 text-blue-400 whitespace-nowrap">
                         Target: {habit.targetCount}/day
                       </Badge>
                     )}
                     {habit.completedToday ? (
-                      <Badge className="bg-green-600 text-white">
+                      <Badge className="bg-green-600 text-white whitespace-nowrap">
                         ✓ Target Met ({habit.todayCompletionCount}/{habit.targetCount})
                       </Badge>
                     ) : habit.todayCompletionCount && habit.todayCompletionCount > 0 ? (
-                      <Badge variant="outline" className="border-yellow-500 text-yellow-400">
+                      <Badge variant="outline" className="border-yellow-500 text-yellow-400 whitespace-nowrap">
                         {habit.todayCompletionCount}/{habit.targetCount} Today
                       </Badge>
                     ) : null}
                   </div>
-                  {habit.description && (
-                    <p className="text-sm text-gray-300 mb-2">{habit.description}</p>
-                  )}
+                    {habit.description && (
+                      <p className="text-sm text-gray-300 mb-2 break-words">{habit.description}</p>
+                    )}
                   
                   {/* Visual Calendar - Last 7 days */}
-                  <div className="flex items-center space-x-1 mt-2">
+                  <div className="flex items-center flex-wrap gap-1 mt-2">
                     {Array.from({ length: 7 }, (_, i) => {
                       const date = new Date();
                       date.setDate(date.getDate() - (6 - i));
@@ -327,12 +327,12 @@ export const HabitList: React.FC<HabitListProps> = ({ refreshTrigger = 0 }) => {
                         </div>
                       );
                     })}
-                    <span className="text-xs text-gray-400 ml-2">
+                    <span className="text-xs text-gray-400 ml-2 whitespace-nowrap">
                       {habit.recentCompletions || 0} completions this week
                     </span>
                   </div>
                 </div>
-                <div className="flex space-x-2">
+                <div className="flex space-x-2 flex-shrink-0">
                   <Button
                     onClick={() => startEdit(habit)}
                     variant="outline"
@@ -354,7 +354,7 @@ export const HabitList: React.FC<HabitListProps> = ({ refreshTrigger = 0 }) => {
 
               {/* Edit Modal */}
               {editingHabit && editingHabit.id === habit.id && (
-                <div className="mt-3 p-4 bg-gray-900 rounded-lg border border-gray-600 space-y-3">
+                <div className="mt-3 p-4 bg-gray-900 rounded-lg border border-gray-600 space-y-3 overflow-hidden">
                   <h4 className="text-white font-medium mb-2">Edit Habit</h4>
                   <div className="space-y-2">
                     <input
@@ -363,6 +363,7 @@ export const HabitList: React.FC<HabitListProps> = ({ refreshTrigger = 0 }) => {
                       onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
                       className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white placeholder-gray-400 focus:outline-none focus:border-white"
                       placeholder="Habit name"
+                      maxLength={100}
                     />
                     <input
                       type="text"
@@ -370,6 +371,7 @@ export const HabitList: React.FC<HabitListProps> = ({ refreshTrigger = 0 }) => {
                       onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
                       className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white placeholder-gray-400 focus:outline-none focus:border-white"
                       placeholder="Description (optional)"
+                      maxLength={500}
                     />
                     <div className="flex items-center space-x-2">
                       <label className="text-sm text-gray-300">Target:</label>
@@ -401,14 +403,14 @@ export const HabitList: React.FC<HabitListProps> = ({ refreshTrigger = 0 }) => {
                 </div>
               )}
 
-              <div className="flex items-center space-x-4">
+              <div className="flex items-center flex-wrap gap-4">
                 <div className="flex items-center space-x-1">
-                  <Flame className="h-4 w-4 text-orange-500" />
-                  <span className="text-sm text-gray-300">
+                  <Flame className="h-4 w-4 text-orange-500 flex-shrink-0" />
+                  <span className="text-sm text-gray-300 whitespace-nowrap">
                     {habit.currentStreak} day streak
                   </span>
                 </div>
-                <div className="text-sm text-gray-400">
+                <div className="text-sm text-gray-400 whitespace-nowrap">
                   Best: {habit.longestStreak} days
                 </div>
               </div>

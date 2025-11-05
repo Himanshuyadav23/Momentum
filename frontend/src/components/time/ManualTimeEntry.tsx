@@ -42,6 +42,14 @@ export const ManualTimeEntry: React.FC<ManualTimeEntryProps> = ({ onEntryAdded }
 
     try {
       setLoading(true);
+      console.log('Adding manual time entry:', {
+        category: formData.category.trim(),
+        description: formData.description.trim(),
+        startTime: formData.startTime,
+        endTime: formData.endTime,
+        isProductive: formData.isProductive
+      });
+      
       const response = await apiClient.addManualTimeEntry({
         category: formData.category.trim(),
         description: formData.description.trim(),
@@ -49,6 +57,8 @@ export const ManualTimeEntry: React.FC<ManualTimeEntryProps> = ({ onEntryAdded }
         endTime: formData.endTime,
         isProductive: formData.isProductive
       });
+
+      console.log('Manual time entry response:', response);
 
       if (response.success) {
         // Reset form
@@ -59,12 +69,36 @@ export const ManualTimeEntry: React.FC<ManualTimeEntryProps> = ({ onEntryAdded }
           endTime: '',
           isProductive: true
         });
+        
+        // Trigger refresh of entries list
         onEntryAdded?.();
         alert('Time entry added successfully!');
+      } else {
+        // Handle case where response.success is false
+        const errorMessage = response.message || 'Failed to add time entry';
+        console.error('Add manual entry failed:', response);
+        alert(errorMessage);
       }
-    } catch (error) {
-      console.error('Failed to add time entry:', error);
-      alert('Failed to add time entry');
+    } catch (error: any) {
+      console.error('Failed to add time entry - Error details:', error);
+      console.error('Error stack:', error?.stack);
+      console.error('Error response:', error?.response);
+      
+      // Try to extract a backend error message
+      let message = 'Failed to add time entry';
+      if (error?.response?.data?.message) {
+        message = error.response.data.message;
+      } else if (error?.message) {
+        message = error.message;
+      }
+      
+      // Show more detailed error in development
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Full error object:', JSON.stringify(error, null, 2));
+        alert(`${message}\n\nCheck console for details.`);
+      } else {
+        alert(message);
+      }
     } finally {
       setLoading(false);
     }

@@ -4,6 +4,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { useAuth } from '@/contexts/AuthContext';
 import { 
   Lightbulb, 
   TrendingUp, 
@@ -41,6 +42,7 @@ export const TimeInsights: React.FC<TimeInsightsProps> = ({
   totalTime,
   productivityRatio
 }) => {
+  const { user } = useAuth();
   const formatDuration = (minutes: number) => {
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
@@ -94,9 +96,15 @@ export const TimeInsights: React.FC<TimeInsightsProps> = ({
   );
   const streak = productiveDays.size;
 
-  // Daily goal (8 hours productive = 480 minutes)
-  const dailyGoal = 480; // 8 hours
+  // Daily goal - use user's custom daily productive hours, default to 8 hours if not set
+  const dailyProductiveHours = user?.dailyProductiveHours || 8;
+  const dailyGoal = dailyProductiveHours * 60; // Convert to minutes
   const goalProgress = Math.min((productiveTime / dailyGoal) * 100, 100);
+  
+  // Calculate waste: wasted time out of the total productive time goal
+  const wastedOfGoal = wastedTime;
+  const usedOfGoal = productiveTime;
+  const remainingOfGoal = Math.max(0, dailyGoal - productiveTime - wastedTime);
 
   // Insights
   const insights: Array<{ type: 'positive' | 'warning' | 'info'; message: string; icon: React.ReactNode }> = [];
@@ -159,16 +167,29 @@ export const TimeInsights: React.FC<TimeInsightsProps> = ({
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center space-x-2">
               <Target className="h-4 w-4 text-blue-400" />
-              <span className="text-sm font-medium text-gray-300">Daily Productive Goal</span>
+              <span className="text-sm font-medium text-gray-300">Daily Productive Goal ({dailyProductiveHours}h)</span>
             </div>
             <span className="text-sm text-gray-400">
               {formatDuration(productiveTime)} / {formatDuration(dailyGoal)}
             </span>
           </div>
-          <Progress value={goalProgress} className="h-3 mb-2" />
-          <div className="flex justify-between text-xs text-gray-400">
-            <span>{Math.round(goalProgress)}% complete</span>
-            <span>{formatDuration(Math.max(0, dailyGoal - productiveTime))} remaining</span>
+          <Progress value={goalProgress} className="h-3 mb-3" />
+          <div className="space-y-2">
+            <div className="flex justify-between text-xs">
+              <span className="text-green-400">✅ Used: {formatDuration(usedOfGoal)}</span>
+              <span className="text-red-400">❌ Wasted: {formatDuration(wastedOfGoal)}</span>
+            </div>
+            <div className="flex justify-between text-xs text-gray-400">
+              <span>{Math.round(goalProgress)}% of goal achieved</span>
+              <span>{formatDuration(Math.max(0, remainingOfGoal))} remaining</span>
+            </div>
+            {wastedOfGoal > 0 && (
+              <div className="mt-2 p-2 bg-red-900/20 border border-red-800 rounded text-xs">
+                <span className="text-red-300">
+                  You've wasted {formatDuration(wastedOfGoal)} out of your {dailyProductiveHours}h daily goal
+                </span>
+              </div>
+            )}
           </div>
         </div>
 

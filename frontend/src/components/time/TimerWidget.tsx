@@ -67,21 +67,35 @@ export const TimerWidget: React.FC<TimerWidgetProps> = ({ onTimerUpdate }) => {
 
     try {
       setLoading(true);
+      console.log('Starting timer with:', { category: category.trim(), description: description.trim(), isProductive });
+      
       const response = await apiClient.startTimer({
         category: category.trim(),
         description: description.trim(),
         isProductive
       });
 
+      console.log('Start timer response:', response);
+
       if (response.success) {
         const d: any = response.data || {};
-        setActiveTimer(d.timeEntry ?? null);
+        const timeEntry = d.timeEntry || d;
+        console.log('Setting active timer:', timeEntry);
+        setActiveTimer(timeEntry);
         setIsRunning(true);
         setTime(0);
         onTimerUpdate?.();
+      } else {
+        // Handle case where response.success is false
+        const errorMessage = response.message || 'Failed to start timer';
+        console.error('Start timer failed:', response);
+        alert(errorMessage);
       }
     } catch (error: any) {
-      console.error('Failed to start timer:', error);
+      console.error('Failed to start timer - Error details:', error);
+      console.error('Error stack:', error?.stack);
+      console.error('Error response:', error?.response);
+      
       // Try to extract a backend error message
       let message = 'Failed to start timer';
       if (error?.response?.data?.message) {
@@ -89,7 +103,14 @@ export const TimerWidget: React.FC<TimerWidgetProps> = ({ onTimerUpdate }) => {
       } else if (error?.message) {
         message = error.message;
       }
-      alert(message);
+      
+      // Show more detailed error in development
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Full error object:', JSON.stringify(error, null, 2));
+        alert(`${message}\n\nCheck console for details.`);
+      } else {
+        alert(message);
+      }
     } finally {
       setLoading(false);
     }

@@ -26,17 +26,20 @@ export const OnboardingWizard: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const { user, updateUser } = useAuth();
 
-  // Step 1: Time Categories
+  // Step 1: Daily Productive Hours
+  const [dailyProductiveHours, setDailyProductiveHours] = useState('');
+
+  // Step 2: Time Categories
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [customCategory, setCustomCategory] = useState('');
 
-  // Step 2: First Habit
+  // Step 3: First Habit
   const [habitName, setHabitName] = useState('');
   const [habitDescription, setHabitDescription] = useState('');
   const [habitFrequency, setHabitFrequency] = useState('daily');
   const [skipHabit, setSkipHabit] = useState(false);
 
-  // Step 3: Budget/Income
+  // Step 4: Budget/Income
   const [weeklyBudget, setWeeklyBudget] = useState('');
   const [income, setIncome] = useState('');
   const [skipBudget, setSkipBudget] = useState(false);
@@ -53,7 +56,7 @@ export const OnboardingWizard: React.FC = () => {
   };
 
   const handleNext = () => {
-    if (currentStep < 3) {
+    if (currentStep < 4) {
       setCurrentStep(currentStep + 1);
     }
   };
@@ -70,7 +73,8 @@ export const OnboardingWizard: React.FC = () => {
       
       const updateData: any = {
         onboardingCompleted: true,
-        timeCategories: selectedCategories
+        timeCategories: selectedCategories,
+        dailyProductiveHours: dailyProductiveHours ? parseFloat(dailyProductiveHours) : undefined
       };
 
       if (!skipBudget) {
@@ -106,10 +110,12 @@ export const OnboardingWizard: React.FC = () => {
   const canProceed = () => {
     switch (currentStep) {
       case 1:
-        return selectedCategories.length >= 3;
+        return dailyProductiveHours && parseFloat(dailyProductiveHours) > 0 && parseFloat(dailyProductiveHours) <= 24;
       case 2:
-        return skipHabit || habitName.trim();
+        return selectedCategories.length >= 3;
       case 3:
+        return skipHabit || habitName.trim();
+      case 4:
         return true;
       default:
         return false;
@@ -121,7 +127,7 @@ export const OnboardingWizard: React.FC = () => {
       <Card className="w-full max-w-2xl bg-card border-gray-800">
         <CardHeader className="text-center">
           <div className="flex items-center justify-center space-x-2 mb-4">
-            {[1, 2, 3].map((step) => (
+            {[1, 2, 3, 4].map((step) => (
               <div
                 key={step}
                 className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
@@ -135,19 +141,47 @@ export const OnboardingWizard: React.FC = () => {
             ))}
           </div>
           <CardTitle className="text-2xl font-bold text-white">
-            {currentStep === 1 && 'Set Up Your Time Categories'}
-            {currentStep === 2 && 'Create Your First Habit'}
-            {currentStep === 3 && 'Set Your Budget (Optional)'}
+            {currentStep === 1 && 'Set Your Daily Productive Hours'}
+            {currentStep === 2 && 'Set Up Your Time Categories'}
+            {currentStep === 3 && 'Create Your First Habit'}
+            {currentStep === 4 && 'Set Your Budget (Optional)'}
           </CardTitle>
           <CardDescription className="text-gray-300">
-            {currentStep === 1 && 'Choose at least 3 categories to track your time'}
-            {currentStep === 2 && 'Start building good habits from day one'}
-            {currentStep === 3 && 'Track your expenses and income for better insights'}
+            {currentStep === 1 && 'How many hours per day do you aim to be productive? We'll help you track how much you use vs waste.'}
+            {currentStep === 2 && 'Choose at least 3 categories to track your time'}
+            {currentStep === 3 && 'Start building good habits from day one'}
+            {currentStep === 4 && 'Track your expenses and income for better insights'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Step 1: Time Categories */}
+          {/* Step 1: Daily Productive Hours */}
           {currentStep === 1 && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="dailyProductiveHours">Daily Productive Hours</Label>
+                <Input
+                  id="dailyProductiveHours"
+                  type="number"
+                  min="1"
+                  max="24"
+                  step="0.5"
+                  placeholder="e.g., 6"
+                  value={dailyProductiveHours}
+                  onChange={(e) => setDailyProductiveHours(e.target.value)}
+                  className="bg-gray-800 border-gray-700 text-white placeholder-gray-400 text-center text-2xl"
+                />
+                <p className="text-sm text-gray-400 text-center">
+                  Enter the number of hours you aim to be productive each day (1-24 hours)
+                </p>
+                <p className="text-xs text-gray-500 text-center mt-2">
+                  We'll track how much productive time you actually use and how much gets wasted
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Time Categories */}
+          {currentStep === 2 && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                 {TIME_CATEGORIES.map((category) => (
@@ -205,8 +239,8 @@ export const OnboardingWizard: React.FC = () => {
             </div>
           )}
 
-          {/* Step 2: First Habit */}
-          {currentStep === 2 && (
+          {/* Step 3: First Habit */}
+          {currentStep === 3 && (
             <div className="space-y-4">
               <div className="flex items-center space-x-2">
                 <input
@@ -266,8 +300,8 @@ export const OnboardingWizard: React.FC = () => {
             </div>
           )}
 
-          {/* Step 3: Budget/Income */}
-          {currentStep === 3 && (
+          {/* Step 4: Budget/Income */}
+          {currentStep === 4 && (
             <div className="space-y-4">
               <div className="flex items-center space-x-2">
                 <input
@@ -322,7 +356,7 @@ export const OnboardingWizard: React.FC = () => {
               Previous
             </Button>
 
-            {currentStep < 3 ? (
+            {currentStep < 4 ? (
               <Button
                 onClick={handleNext}
                 disabled={!canProceed()}

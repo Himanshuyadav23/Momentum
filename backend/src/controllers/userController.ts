@@ -4,13 +4,14 @@ import { User } from '../models/User';
 export const updateProfile = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
-    const { name, timeCategories, weeklyBudget, income } = req.body;
+    const { name, timeCategories, weeklyBudget, income, dailyProductiveHours } = req.body;
 
     const updatedUser = await User.update(userId, {
       name,
       timeCategories,
       weeklyBudget,
-      income
+      income,
+      dailyProductiveHours
     });
 
     if (!updatedUser) {
@@ -31,6 +32,7 @@ export const updateProfile = async (req: Request, res: Response) => {
           timeCategories: updatedUser.timeCategories,
           weeklyBudget: updatedUser.weeklyBudget,
           income: updatedUser.income,
+          dailyProductiveHours: updatedUser.dailyProductiveHours,
           onboardingCompleted: updatedUser.onboardingCompleted
         }
       }
@@ -48,12 +50,13 @@ export const updateProfile = async (req: Request, res: Response) => {
 export const completeOnboarding = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
-    const { timeCategories, firstHabit, weeklyBudget, income } = req.body;
+    const { timeCategories, firstHabit, weeklyBudget, income, dailyProductiveHours } = req.body;
 
     const updatedUser = await User.update(userId, {
       timeCategories,
       weeklyBudget,
       income,
+      dailyProductiveHours,
       onboardingCompleted: true
     });
 
@@ -75,6 +78,7 @@ export const completeOnboarding = async (req: Request, res: Response) => {
           timeCategories: updatedUser.timeCategories,
           weeklyBudget: updatedUser.weeklyBudget,
           income: updatedUser.income,
+          dailyProductiveHours: updatedUser.dailyProductiveHours,
           onboardingCompleted: updatedUser.onboardingCompleted
         }
       }

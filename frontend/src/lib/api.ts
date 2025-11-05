@@ -72,15 +72,23 @@ class ApiClient {
         }
         
         let errorMessage = `Request failed with status ${response.status}`;
+        let errorData: any = null;
         try {
           const data = await response.json();
-          errorMessage = data.message || errorMessage;
+          errorData = data;
+          errorMessage = data.message || data.error || errorMessage;
         } catch {
-          // Response might not be JSON
-          errorMessage = await response.text() || errorMessage;
+          // Response might not be JSON, try to get text
+          try {
+            const text = await response.text();
+            errorMessage = text || errorMessage;
+          } catch {
+            // If we can't read the response, use default message
+          }
         }
         const error = new Error(errorMessage);
         (error as any).status = response.status;
+        (error as any).response = { data: errorData };
         throw error;
       }
 

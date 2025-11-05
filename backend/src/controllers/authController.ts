@@ -57,6 +57,7 @@ export const authenticate = async (req: Request, res: Response) => {
           timeCategories: user.timeCategories,
           weeklyBudget: user.weeklyBudget,
           income: user.income,
+          dailyProductiveHours: user.dailyProductiveHours,
           onboardingCompleted: user.onboardingCompleted
         }
       }
@@ -75,8 +76,9 @@ export const authenticate = async (req: Request, res: Response) => {
     
     if (error?.message?.includes('token')) {
       errorMessage = 'Invalid Firebase token';
-    } else if (error?.message?.includes('network') || error?.message?.includes('fetch')) {
-      errorMessage = 'Network error. Please check your connection.';
+    } else if (error?.message?.includes('Network error') || error?.message?.includes('network') || error?.message?.includes('ENOTFOUND') || error?.message?.includes('fetch')) {
+      errorMessage = 'Network error. Cannot connect to Firebase services. Please check your internet connection.';
+      statusCode = 503; // Service Unavailable
     } else if (error?.message?.includes('not initialized') || error?.message?.includes('Database')) {
       errorMessage = 'Database configuration error. Please check backend environment variables.';
       statusCode = 500;

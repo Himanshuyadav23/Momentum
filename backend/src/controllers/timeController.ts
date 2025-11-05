@@ -6,28 +6,52 @@ export const startTimer = async (req: Request, res: Response) => {
     const userId = (req as any).user.id;
     const { category, description, isProductive } = req.body;
 
+    // Validate required fields
+    if (!category || !category.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Category is required'
+      });
+    }
+
+    if (!description || !description.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Description is required'
+      });
+    }
+
+    console.log('Starting timer for user:', userId, { category, description, isProductive });
+
     // Stop any active timer first
     await TimeEntry.stopAllActiveByUserId(userId);
 
     // Create new time entry
     const timeEntry = await TimeEntry.create({
       userId,
-      category,
-      description,
+      category: category.trim(),
+      description: description.trim(),
       startTime: new Date(),
       isActive: true,
       isProductive: isProductive || false
     });
 
+    console.log('Timer started successfully:', timeEntry.id);
+
     return res.status(201).json({
       success: true,
       data: { timeEntry }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Start timer error:', error);
+    console.error('Error details:', {
+      message: error?.message,
+      stack: error?.stack,
+      code: error?.code
+    });
     return res.status(500).json({
       success: false,
-      message: 'Failed to start timer'
+      message: error?.message || 'Failed to start timer'
     });
   }
 };
@@ -139,28 +163,83 @@ export const addManualEntry = async (req: Request, res: Response) => {
     const userId = (req as any).user.id;
     const { category, description, startTime, endTime, isProductive } = req.body;
 
-    const duration = Math.floor((new Date(endTime).getTime() - new Date(startTime).getTime()) / (1000 * 60));
+    // Validate required fields
+    if (!category || !category.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Category is required'
+      });
+    }
+
+    if (!description || !description.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Description is required'
+      });
+    }
+
+    if (!startTime || !endTime) {
+      return res.status(400).json({
+        success: false,
+        message: 'Start time and end time are required'
+      });
+    }
+
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid date format'
+      });
+    }
+
+    if (start >= end) {
+      return res.status(400).json({
+        success: false,
+        message: 'End time must be after start time'
+      });
+    }
+
+    const duration = Math.floor((end.getTime() - start.getTime()) / (1000 * 60));
+
+    console.log('Adding manual time entry for user:', userId, {
+      category,
+      description,
+      startTime: start.toISOString(),
+      endTime: end.toISOString(),
+      duration,
+      isProductive
+    });
 
     const timeEntry = await TimeEntry.create({
       userId,
-      category,
-      description,
-      startTime: new Date(startTime),
-      endTime: new Date(endTime),
+      category: category.trim(),
+      description: description.trim(),
+      startTime: start,
+      endTime: end,
       duration,
       isActive: false,
       isProductive: isProductive || false
     });
 
+    console.log('Manual time entry created successfully:', timeEntry.id);
+
     return res.status(201).json({
       success: true,
       data: { timeEntry }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Add manual entry error:', error);
+    console.error('Error details:', {
+      message: error?.message,
+      stack: error?.stack,
+      code: error?.code
+    });
     return res.status(500).json({
       success: false,
-      message: 'Failed to add manual entry'
+      message: error?.message || 'Failed to add manual entry'
     });
   }
 };

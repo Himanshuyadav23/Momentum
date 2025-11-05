@@ -60,20 +60,20 @@ export default function HabitsPage() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 overflow-x-hidden">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column - Create Habit */}
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 min-w-0">
             <CreateHabit onHabitCreated={handleHabitUpdate} />
           </div>
 
           {/* Middle Column - Habit List */}
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 min-w-0">
             <HabitList refreshTrigger={refreshKey} />
           </div>
 
           {/* Right Column - Statistics */}
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 min-w-0">
             <HabitStats refreshKey={refreshKey} />
           </div>
         </div>

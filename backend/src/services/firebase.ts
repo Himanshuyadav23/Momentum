@@ -76,9 +76,24 @@ export const getFirebaseUser = async (uid: string) => {
   try {
     const userRecord = await admin.auth().getUser(uid);
     return userRecord;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Firebase user fetch error:', error);
-    throw new Error('User not found in Firebase');
+    
+    // Check if it's a network/DNS error
+    if (error?.code === 'app/network-error' || 
+        error?.message?.includes('ENOTFOUND') || 
+        error?.message?.includes('getaddrinfo') ||
+        error?.errorInfo?.code === 'app/network-error') {
+      throw new Error('Network error: Cannot connect to Firebase services. Please check your internet connection.');
+    }
+    
+    // Check if it's an actual "user not found" error
+    if (error?.code === 'auth/user-not-found' || error?.errorInfo?.code === 'auth/user-not-found') {
+      throw new Error('User not found in Firebase');
+    }
+    
+    // For other Firebase errors, pass through the original message
+    throw new Error(error?.message || 'Failed to fetch user from Firebase');
   }
 };
 

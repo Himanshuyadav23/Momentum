@@ -464,36 +464,37 @@ if (!process.env.VERCEL) {
 
   // Keep process alive and monitor health
   const keepAlive = () => {
-  let lastHeartbeat = 0;
-  
-  // Periodic health check and status logging (less aggressive - every 30 seconds)
-  setInterval(() => {
-    const uptime = process.uptime();
-    const memUsage = process.memoryUsage();
-    const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+    let lastHeartbeat = 0;
     
-    // Log heartbeat every 5 minutes
-    const minutes = Math.floor(uptime / 60);
-    if (minutes !== lastHeartbeat && minutes > 0 && minutes % 5 === 0) {
-      lastHeartbeat = minutes;
-      console.log(`💓 Server heartbeat - Uptime: ${minutes}m, Memory: ${heapUsedMB}MB`);
-    }
-    
-    // Check if server is still running (only if we're not already starting)
-    // Check less frequently - every 30 seconds instead of every second
-    if (!isServerRunning && !isStarting && !serverInstance && !retryTimeout) {
-      // Only attempt recovery if we've been down for more than 10 seconds
-      if (uptime % 10 === 0) {
-        console.warn('⚠️ Server appears to be down. Attempting recovery...');
-        startServer();
+    // Periodic health check and status logging (less aggressive - every 30 seconds)
+    setInterval(() => {
+      const uptime = process.uptime();
+      const memUsage = process.memoryUsage();
+      const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+      
+      // Log heartbeat every 5 minutes
+      const minutes = Math.floor(uptime / 60);
+      if (minutes !== lastHeartbeat && minutes > 0 && minutes % 5 === 0) {
+        lastHeartbeat = minutes;
+        console.log(`💓 Server heartbeat - Uptime: ${minutes}m, Memory: ${heapUsedMB}MB`);
       }
-    }
-    
-    // Memory warning (over 500MB)
-    if (heapUsedMB > 500) {
-      console.warn(`⚠️ High memory usage: ${heapUsedMB}MB`);
-    }
-  }, 30000); // Check every 30 seconds instead of every second
+      
+      // Check if server is still running (only if we're not already starting)
+      // Check less frequently - every 30 seconds instead of every second
+      if (!isServerRunning && !isStarting && !serverInstance && !retryTimeout) {
+        // Only attempt recovery if we've been down for more than 10 seconds
+        if (uptime % 10 === 0) {
+          console.warn('⚠️ Server appears to be down. Attempting recovery...');
+          startServer();
+        }
+      }
+      
+      // Memory warning (over 500MB)
+      if (heapUsedMB > 500) {
+        console.warn(`⚠️ High memory usage: ${heapUsedMB}MB`);
+      }
+    }, 30000); // Check every 30 seconds instead of every second
+  };
 
   // Keep process alive - prevent any automatic exits
   process.stdin.resume();
@@ -506,7 +507,7 @@ if (!process.env.VERCEL) {
       clearTimeout(retryTimeout);
       retryTimeout = null;
     }
-  };
+  });
 
   keepAlive();
 }
