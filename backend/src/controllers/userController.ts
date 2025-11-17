@@ -33,7 +33,9 @@ export const updateProfile = async (req: Request, res: Response) => {
           weeklyBudget: updatedUser.weeklyBudget,
           income: updatedUser.income,
           dailyProductiveHours: updatedUser.dailyProductiveHours,
-          onboardingCompleted: updatedUser.onboardingCompleted
+          onboardingCompleted: updatedUser.onboardingCompleted,
+          role: updatedUser.role || 'user',
+          isAdmin: updatedUser.isAdmin || false
         }
       }
     });
@@ -79,7 +81,9 @@ export const completeOnboarding = async (req: Request, res: Response) => {
           weeklyBudget: updatedUser.weeklyBudget,
           income: updatedUser.income,
           dailyProductiveHours: updatedUser.dailyProductiveHours,
-          onboardingCompleted: updatedUser.onboardingCompleted
+          onboardingCompleted: updatedUser.onboardingCompleted,
+          role: updatedUser.role || 'user',
+          isAdmin: updatedUser.isAdmin || false
         }
       }
     });

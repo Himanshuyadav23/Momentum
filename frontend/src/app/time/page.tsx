@@ -6,6 +6,8 @@ import { TimerWidget } from '@/components/time/TimerWidget';
 import { TimeEntries } from '@/components/time/TimeEntries';
 import { ManualTimeEntry } from '@/components/time/ManualTimeEntry';
 import { TimeInsights } from '@/components/time/TimeInsights';
+import { Navigation } from '@/components/layout/Navigation';
+import { Footer } from '@/components/layout/Footer';
 import { Loader2, AlertCircle, Settings } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -92,14 +94,7 @@ export default function TimePage() {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-8">
               <h1 className="text-xl font-semibold text-white">Momentum</h1>
-              <nav className="hidden md:flex space-x-6">
-                <a href="/" className="text-gray-300 hover:text-white transition-colors">Dashboard</a>
-                <a href="/time" className="text-white font-medium">Time</a>
-                <a href="/habits" className="text-gray-300 hover:text-white transition-colors">Habits</a>
-                <a href="/expenses" className="text-gray-300 hover:text-white transition-colors">Expenses</a>
-                <a href="/analytics" className="text-gray-300 hover:text-white transition-colors">Analytics</a>
-                <a href="/profile" className="text-gray-300 hover:text-white transition-colors">Profile</a>
-              </nav>
+              <Navigation currentPage="time" />
             </div>
             <div className="flex items-center space-x-4">
               <span className="text-sm text-gray-300">Welcome, {user.name}</span>
@@ -184,6 +179,7 @@ export default function TimePage() {
           </div>
         </div>
       </main>
+      <Footer />
     </div>
   );
 }

@@ -462,6 +462,43 @@ class ApiClient {
       return res;
     }
   }
+
+  // Admin endpoints
+  async getAdminStats() {
+    return this.request('/admin/stats');
+  }
+
+  async getAdminUsers(params?: { limit?: number }) {
+    const queryParams = new URLSearchParams();
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    const query = queryParams.toString();
+    return this.request(`/admin/users${query ? `?${query}` : ''}`);
+  }
+
+  async getAdminUser(userId: string) {
+    return this.request(`/admin/users/${userId}`);
+  }
+
+  async updateAdminUser(userId: string, data: any) {
+    return this.request(`/admin/users/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteAdminUser(userId: string) {
+    return this.request(`/admin/users/${userId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Temporary admin promotion endpoint
+  async promoteToAdmin(email: string, secretKey: string) {
+    return this.request('/promote-admin', {
+      method: 'POST',
+      body: JSON.stringify({ email, secretKey }),
+    });
+  }
 }
 
 export const apiClient = new ApiClient(API_BASE_URL);

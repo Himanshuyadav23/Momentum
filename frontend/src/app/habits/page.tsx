@@ -4,6 +4,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { HabitList } from '@/components/habits/HabitList';
 import { CreateHabit } from '@/components/habits/CreateHabit';
 import { HabitStats } from '@/components/habits/HabitStats';
+import { Navigation } from '@/components/layout/Navigation';
+import { Footer } from '@/components/layout/Footer';
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 
@@ -43,14 +45,7 @@ export default function HabitsPage() {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-8">
               <h1 className="text-xl font-semibold text-white">Momentum</h1>
-              <nav className="hidden md:flex space-x-6">
-                <a href="/" className="text-gray-300 hover:text-white transition-colors">Dashboard</a>
-                <a href="/time" className="text-gray-300 hover:text-white transition-colors">Time</a>
-                <a href="/habits" className="text-white font-medium">Habits</a>
-                <a href="/expenses" className="text-gray-300 hover:text-white transition-colors">Expenses</a>
-                <a href="/analytics" className="text-gray-300 hover:text-white transition-colors">Analytics</a>
-                <a href="/profile" className="text-gray-300 hover:text-white transition-colors">Profile</a>
-              </nav>
+              <Navigation currentPage="habits" />
             </div>
             <div className="flex items-center space-x-4">
               <span className="text-sm text-gray-300">Welcome, {user.name}</span>
@@ -78,6 +73,7 @@ export default function HabitsPage() {
           </div>
         </div>
       </main>
+      <Footer />
     </div>
   );
 }

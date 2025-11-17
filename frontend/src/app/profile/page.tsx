@@ -2,6 +2,8 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { ProfileSettings } from '@/components/profile/ProfileSettings';
+import { Navigation } from '@/components/layout/Navigation';
+import { Footer } from '@/components/layout/Footer';
 import { Loader2 } from 'lucide-react';
 
 export default function ProfilePage() {
@@ -35,14 +37,7 @@ export default function ProfilePage() {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-8">
               <h1 className="text-xl font-semibold text-white">Momentum</h1>
-              <nav className="hidden md:flex space-x-6">
-                <a href="/" className="text-gray-300 hover:text-white transition-colors">Dashboard</a>
-                <a href="/time" className="text-gray-300 hover:text-white transition-colors">Time</a>
-                <a href="/habits" className="text-gray-300 hover:text-white transition-colors">Habits</a>
-                <a href="/expenses" className="text-gray-300 hover:text-white transition-colors">Expenses</a>
-                <a href="/analytics" className="text-gray-300 hover:text-white transition-colors">Analytics</a>
-                <a href="/profile" className="text-white font-medium">Profile</a>
-              </nav>
+              <Navigation currentPage="profile" />
             </div>
             <div className="flex items-center space-x-4">
               <span className="text-sm text-gray-300">Welcome, {user.name}</span>
@@ -55,6 +50,7 @@ export default function ProfilePage() {
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <ProfileSettings />
       </main>
+      <Footer />
     </div>
   );
 }

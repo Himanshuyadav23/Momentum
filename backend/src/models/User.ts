@@ -11,6 +11,8 @@ export interface IUser {
   income?: number;
   dailyProductiveHours?: number;
   onboardingCompleted: boolean;
+  role?: 'user' | 'admin';
+  isAdmin?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -108,6 +110,41 @@ export class User {
     } catch (error) {
       console.error('Error deleting user:', error);
       return false;
+    }
+  }
+
+  static async findAll(options?: { limit?: number }): Promise<IUser[]> {
+    try {
+      let query = usersCollection().orderBy('createdAt', 'desc');
+      
+      if (options?.limit) {
+        query = query.limit(options.limit);
+      }
+      
+      const snapshot = await query.get();
+      
+      return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          createdAt: firestoreHelpers.timestampToDate(data.createdAt),
+          updatedAt: firestoreHelpers.timestampToDate(data.updatedAt)
+        } as IUser;
+      });
+    } catch (error) {
+      console.error('Error finding all users:', error);
+      return [];
+    }
+  }
+
+  static async count(): Promise<number> {
+    try {
+      const snapshot = await usersCollection().get();
+      return snapshot.size;
+    } catch (error) {
+      console.error('Error counting users:', error);
+      return 0;
     }
   }
 }

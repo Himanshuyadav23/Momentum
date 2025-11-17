@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
-import { Chrome, Mail, Lock, User } from 'lucide-react';
+import { Chrome, Mail, Lock, User, ExternalLink } from 'lucide-react';
 
 export const LoginForm: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -175,6 +175,20 @@ export const LoginForm: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+      <div className="mt-8 text-center">
+        <p className="text-gray-500 text-xs">
+          Created by{' '}
+          <a 
+            href="https://himanshuuyadav.netlify.app/" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-blue-400 hover:text-blue-300 transition-colors inline-flex items-center space-x-1"
+          >
+            <span>Himanshu Yadav</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        </p>
+      </div>
     </div>
   );
 };

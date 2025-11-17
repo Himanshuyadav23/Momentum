@@ -58,7 +58,9 @@ export const authenticate = async (req: Request, res: Response) => {
           weeklyBudget: user.weeklyBudget,
           income: user.income,
           dailyProductiveHours: user.dailyProductiveHours,
-          onboardingCompleted: user.onboardingCompleted
+          onboardingCompleted: user.onboardingCompleted,
+          role: user.role || 'user',
+          isAdmin: user.isAdmin || false
         }
       }
     });

@@ -22,6 +22,8 @@ interface User {
   income?: number;
   dailyProductiveHours?: number;
   onboardingCompleted: boolean;
+  role?: 'user' | 'admin';
+  isAdmin?: boolean;
 }
 
 interface AuthContextType {
