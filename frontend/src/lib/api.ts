@@ -499,6 +499,41 @@ class ApiClient {
       body: JSON.stringify({ email, secretKey }),
     });
   }
+
+  // Todo endpoints
+  async getTodos(params?: { type?: 'daily' | 'weekly' | 'monthly'; isCompleted?: boolean }) {
+    const queryParams = new URLSearchParams();
+    if (params?.type) queryParams.append('type', params.type);
+    if (params?.isCompleted !== undefined) queryParams.append('isCompleted', params.isCompleted.toString());
+    const query = queryParams.toString();
+    return this.request(`/todos${query ? `?${query}` : ''}`);
+  }
+
+  async createTodo(data: { title: string; description?: string; type: 'daily' | 'weekly' | 'monthly'; dueDate?: string }) {
+    return this.request('/todos', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateTodo(id: string, data: { title?: string; description?: string; type?: 'daily' | 'weekly' | 'monthly'; isCompleted?: boolean; dueDate?: string }) {
+    return this.request(`/todos/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteTodo(id: string) {
+    return this.request(`/todos/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async toggleTodo(id: string) {
+    return this.request(`/todos/${id}/toggle`, {
+      method: 'PATCH',
+    });
+  }
 }
 
 export const apiClient = new ApiClient(API_BASE_URL);

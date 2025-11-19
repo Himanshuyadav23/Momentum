@@ -17,6 +17,7 @@ import {
   BarChart3
 } from 'lucide-react';
 import { ActivityHeatmap } from './ActivityHeatmap';
+import { TodoWidget } from './TodoWidget';
 
 interface DashboardData {
   time: {
@@ -310,6 +311,11 @@ export const Dashboard: React.FC = () => {
               </div>
             </CardContent>
           </Card>
+        </div>
+
+        {/* Todo Widget */}
+        <div className="mt-8 mb-6">
+          <TodoWidget />
         </div>
 
         {/* Recent Activity */}

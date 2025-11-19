@@ -18,6 +18,7 @@ import expenseRoutes from './routes/expense';
 import analyticsRoutes from './routes/analytics';
 import adminRoutes from './routes/admin';
 import adminPromoteRoutes from './routes/adminPromote';
+import todoRoutes from './routes/todo';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
@@ -132,6 +133,7 @@ app.use('/api/time', timeRoutes);
 app.use('/api/habits', habitRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/todos', todoRoutes);
 app.use('/api/admin', adminRoutes);
 // Temporary admin promotion endpoint - remove after use
 app.use('/api', adminPromoteRoutes);

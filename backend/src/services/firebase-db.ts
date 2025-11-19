@@ -129,6 +129,9 @@ export const habitLogsCollection = () => getDb().collection('habitLogs');
 // Expenses Collection
 export const expensesCollection = () => getDb().collection('expenses');
 
+// Todos Collection
+export const todosCollection = () => getDb().collection('todos');
+
 // Helper functions for Firestore operations
 export const firestoreHelpers = {
   // Convert Firestore timestamp to Date
